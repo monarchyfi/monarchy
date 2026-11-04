@@ -6,3 +6,4 @@ broadcast/
 web/dist/
 web/node_modules/
 deployments/31337.json
+deployments/launchpads/rehearsal.json

@@ -14,10 +14,6 @@ interface IBoxaCoin {
     function rewardsOf(address holder) external view returns (uint256);
 }
 
-interface IBoxaRelease {
-    function releaseHolderRewards(bytes32 poolId) external;
-}
-
 /// @notice Lodestar on Boxa (boxa.club) against the real hooks on an Elysium mainnet fork.
 contract BoxaForkTest is ForkBase {
     address internal constant MAIN = 0xBCc1f22d137C1D98DFa5548E4d4261D7AeE06acC;
@@ -194,7 +190,6 @@ contract BoxaForkTest is ForkBase {
         skip(20 minutes);
         _lock(coin, poolId, IERC20(coin).balanceOf(locker));
         _volume(source, coin, 0.5 ether, 10);
-        IBoxaRelease(hook).releaseHolderRewards(_id(coin));
         uint256 earned = IBoxaCoin(coin).rewardsOf(address(exile));
         assertGt(earned, 0, "Exile earns dividends on locked coins");
         assertEq(exile.harvest(coin), earned, "hook.claimRewards(coin, exile) paid Exile");

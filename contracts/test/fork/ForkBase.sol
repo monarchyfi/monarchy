@@ -15,29 +15,7 @@ import {IFeeSource} from "../../src/interfaces/IFeeSource.sol";
 import {IV4PoolManager, V4PoolKey} from "../../src/interfaces/IUniswapV4.sol";
 import {V4FeeSource} from "../../src/sources/V4FeeSource.sol";
 import {MonarchTiers} from "../../src/libraries/MonarchTiers.sol";
-
-/// @notice Arbitrum's ArbSys precompile, which Elysium (an Orbit chain) has and a local fork doesn't. Kleos's hooks
-/// ask it whether their caller is an L1 alias.
-contract MockArbSys {
-    function wasMyCallersAddressAliased() external pure returns (bool) {
-        return false;
-    }
-
-    function arbBlockNumber() external view returns (uint256) {
-        return block.number;
-    }
-
-    function arbChainID() external view returns (uint256) {
-        return block.chainid;
-    }
-
-    fallback() external {
-        assembly {
-            mstore(0, 0)
-            return(0, 32)
-        }
-    }
-}
+import {MockArbSys} from "../../src/mocks/MockArbSys.sol";
 
 /// @notice Monarchy core on a fork of Elysium mainnet (chain 99901), against the launchpads' real contracts.
 /// Set ELYSIUM_RPC_URL to run (for example https://rpc.eleos.fun); without it every fork test is skipped.

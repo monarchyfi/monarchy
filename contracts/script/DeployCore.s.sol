@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {BaseScript} from "./Base.s.sol";
+import {LaunchpadsBase} from "./LaunchpadsBase.s.sol";
 import {console2} from "forge-std/Script.sol";
 import {Exile} from "../src/Exile.sol";
 import {Sandfall} from "../src/Sandfall.sol";
@@ -20,7 +20,9 @@ import {AscendFeeSource} from "../src/sources/AscendFeeSource.sol";
 /// LodestarFactory.
 /// ASCEND_MODE=real (default) points at Ascend on Elysium testnet from env; ASCEND_MODE=mock points at
 /// the contracts DeployMocks wrote to deployments/<chainId>.json.
-contract DeployCore is BaseScript {
+/// When DeployLaunchpads already put a core on this chain (deployments/launchpads/<chainId>.json), its Exile, Sandfall
+/// and Lodestar implementation are reused, so Ascend routers and the Eleos, Kleos and Boxa ones share one Exile.
+contract DeployCore is LaunchpadsBase {
     function run() external {
         string memory mode = vm.envOr("ASCEND_MODE", string("real"));
         Deployment memory d = _load();
@@ -51,10 +53,13 @@ contract DeployCore is BaseScript {
             "FACTORY_OWNER must be a multisig on this chain (ALLOW_EOA_OWNER=true to override)"
         );
 
+        Launchpads memory shared = _lpLoad();
+        bool share = _has(shared.exile) && _has(shared.sandfall) && _has(shared.lodestarImpl);
+
         vm.startBroadcast(_deployerKey());
-        Exile exile = new Exile();
-        Sandfall sandfall = new Sandfall();
-        Lodestar impl = new Lodestar();
+        Exile exile = share ? Exile(payable(shared.exile)) : new Exile();
+        Sandfall sandfall = share ? Sandfall(shared.sandfall) : new Sandfall();
+        Lodestar impl = share ? Lodestar(payable(shared.lodestarImpl)) : new Lodestar();
         AscendSwapper swapper =
             new AscendSwapper(IVault(d.vault), ICLPoolManager(d.poolManager), IAscendLaunchpad(d.launchpad));
         AscendFeeSource ascend = new AscendFeeSource(
@@ -70,7 +75,7 @@ contract DeployCore is BaseScript {
         );
         // Exile's owner only adds registrars for the harvest, which Ascend routers don't use; hand it to the same
         // owner as the factory (the owner accepts with Exile.acceptOwner)
-        if (owner != vm.addr(_deployerKey())) exile.transferOwner(owner);
+        if (!share && owner != vm.addr(_deployerKey())) exile.transferOwner(owner);
         vm.stopBroadcast();
 
         d.exile = address(exile);
