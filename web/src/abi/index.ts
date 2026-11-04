@@ -6,3 +6,7 @@ export { ascendSwapperAbi } from "./AscendSwapper";
 export { iAscendLaunchpadAbi } from "./IAscendLaunchpad";
 export { iListingDeskAbi } from "./IListingDesk";
 export { mockERC20Abi } from "./MockERC20";
+export { v4FeeSourceAbi } from "./V4FeeSource";
+export { iEleosHookAbi } from "./IEleosHook";
+export { iKleosHookAbi } from "./IKleosHook";
+export { iBoxaHookAbi } from "./IBoxaHook";

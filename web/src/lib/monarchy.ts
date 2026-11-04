@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { useReadContract, useReadContracts } from "wagmi";
 import type { Address } from "viem";
-import { exileAbi, lodestarAbi, mockERC20Abi } from "../abi";
+import { exileAbi, lodestarAbi, lodestarFactoryAbi, mockERC20Abi } from "../abi";
 import { DEFAULT_DRIP_DAYS } from "./constants";
-import { isSet, useDeployment } from "./deployments";
+import { padsOf } from "./launchpads";
+import { isSet, useDeployment, ZERO } from "./deployments";
 
 /** The router and assets for the deployment's token, or any Lodestar passed in. */
 export function useLodestarCore(lodestar?: Address) {
@@ -40,6 +41,9 @@ export function useLodestarCore(lodestar?: Address) {
 
 export type TokenMeta = { symbol: string; decimals: number };
 
+/** What address(0) stands for as a quote asset: the chain's native coin (HYPE on Elysium). */
+export const NATIVE_META: TokenMeta = { symbol: "HYPE", decimals: 18 };
+
 export function useTokenMeta(tokens: (Address | undefined)[]): (TokenMeta | undefined)[] {
   const r = useReadContracts({
     allowFailure: true,
@@ -49,7 +53,8 @@ export function useTokenMeta(tokens: (Address | undefined)[]): (TokenMeta | unde
     ]),
     query: { enabled: tokens.every((t) => !!t), staleTime: Infinity },
   });
-  return tokens.map((_, i) => {
+  return tokens.map((t, i) => {
+    if (t === ZERO) return NATIVE_META;
     const s = r.data?.[2 * i];
     const dec = r.data?.[2 * i + 1];
     if (!s || !dec || s.status !== "success" || dec.status !== "success") return undefined;
@@ -98,4 +103,23 @@ export function useLockedTotal(token?: Address) {
     owners.add(l.owner.toLowerCase());
   }
   return { amount, locks, lockers: owners.size };
+}
+
+/** The factories this chain's routers come from: Ascend's, then one per launchpad on Elysium mainnet. */
+export function useFactories(): Address[] {
+  const d = useDeployment();
+  if (!d) return [];
+  return [...(isSet(d.factory) ? [d.factory] : []), ...padsOf(d.pads).map((p) => p.pad.factory)];
+}
+
+/** The Lodestar any of this chain's factories made for `token`, or undefined when none did. */
+export function useRouterOf(token?: Address) {
+  const factories = useFactories();
+  const r = useReadContracts({
+    allowFailure: true,
+    contracts: factories.map((f) => ({ address: f, abi: lodestarFactoryAbi, functionName: "lodestarOf", args: [token ?? ZERO] }) as const),
+    query: { enabled: !!token && factories.length > 0 },
+  });
+  const router = r.data?.map((x) => (x.status === "success" ? x.result : undefined)).find((a) => isSet(a));
+  return { router, isLoading: r.isLoading };
 }

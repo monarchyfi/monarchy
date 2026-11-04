@@ -9,19 +9,9 @@ export const lodestarFactoryAbi = [
         "internalType": "address"
       },
       {
-        "name": "launchpad_",
+        "name": "source_",
         "type": "address",
-        "internalType": "contract IAscendLaunchpad"
-      },
-      {
-        "name": "desk_",
-        "type": "address",
-        "internalType": "contract IListingDesk"
-      },
-      {
-        "name": "poolManager_",
-        "type": "address",
-        "internalType": "contract ICLPoolManager"
+        "internalType": "contract IFeeSource"
       },
       {
         "name": "exile_",
@@ -241,19 +231,6 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "function",
-    "name": "desk",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IListingDesk"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "exile",
     "inputs": [],
     "outputs": [
@@ -274,19 +251,6 @@ export const lodestarFactoryAbi = [
         "name": "",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "launchpad",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IAscendLaunchpad"
       }
     ],
     "stateMutability": "view"
@@ -338,19 +302,6 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "function",
-    "name": "poolManager",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ICLPoolManager"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "predict",
     "inputs": [
       {
@@ -377,6 +328,126 @@ export const lodestarFactoryAbi = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "rescueDeploy",
+    "inputs": [
+      {
+        "name": "p",
+        "type": "tuple",
+        "internalType": "struct LodestarFactory.DeployParams",
+        "components": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "quote",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "cfg",
+            "type": "tuple",
+            "internalType": "struct ILodestar.Config",
+            "components": [
+              {
+                "name": "burnBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "holdersBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "treasuryBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "swapper",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "maxSlippageBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "tokenToHolders",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          },
+          {
+            "name": "treasuryRecipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "treasuryWindow",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "tiers",
+            "type": "tuple[]",
+            "internalType": "struct IExile.Tier[]",
+            "components": [
+              {
+                "name": "minDuration",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "multiplierBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "label",
+                "type": "bytes32",
+                "internalType": "bytes32"
+              }
+            ]
+          },
+          {
+            "name": "enrolListing",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "listingCap",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "creatorLockUntil",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "steward",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "lodestar",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -416,6 +487,19 @@ export const lodestarFactoryAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "source",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IFeeSource"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -556,12 +640,12 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "error",
-    "name": "DeskMismatch",
+    "name": "FailedDeployment",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "FailedDeployment",
+    "name": "HoldersSplitActive",
     "inputs": []
   },
   {
@@ -582,12 +666,22 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "NoListingDesk",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotPendingOwner",
     "inputs": []
   },
   {
     "type": "error",
     "name": "NotPoolCreator",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotStranded",
     "inputs": []
   },
   {

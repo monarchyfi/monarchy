@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
-import { useChainId, useConnection, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useChainId, useConnection, usePublicClient, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Abi, Address } from "viem";
 import { useReadContract } from "wagmi";
@@ -19,12 +19,19 @@ type Props = {
   disabledReason?: string;
   onDone?: () => void;
   className?: string;
+  /** Send 30% more gas than the estimate, like the keeper. For calls whose cost moves between the estimate and the
+   * block: an Exile lock that lands in a later hour bucket than it was estimated in can run out of gas otherwise. */
+  headroom?: boolean;
 };
 
+/** The extra gas `headroom` adds, in percent of the estimate. */
+const HEADROOM_PCT = 30n;
+
 /** Sends one transaction and shows pending / confirmed / error, with an explorer link when there is one. */
-export function TxButton({ request, children, disabledReason, onDone, className }: Props) {
+export function TxButton({ request, children, disabledReason, onDone, className, headroom }: Props) {
   const chainId = useChainId();
-  const { isConnected } = useConnection();
+  const { isConnected, address } = useConnection();
+  const client = usePublicClient({ chainId });
   const { wrongNetwork, target } = useNetwork();
   const qc = useQueryClient();
   const write = useWriteContract();
@@ -58,8 +65,13 @@ export function TxButton({ request, children, disabledReason, onDone, className 
     setHash(undefined);
     try {
       // inside the try: a request built from a bad input (a fraction where whole seconds go) throws here
-      const req = request();
+      let req = request();
       if (!req) return;
+      if (headroom && req.gas === undefined && client && address) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const est = await client.estimateContractGas({ ...req, account: address } as any);
+        req = { ...req, gas: (est * (100n + HEADROOM_PCT)) / 100n };
+      }
       // Pinned to the chain the page reads from: if the wallet moved in the meantime, wagmi refuses to send
       // instead of sending the transaction somewhere else.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

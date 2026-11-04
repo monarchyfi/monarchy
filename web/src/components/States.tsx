@@ -1,13 +1,23 @@
-import { useBlockNumber, useConnection } from "wagmi";
-import { chainName } from "../lib/chains";
+import { useBlockNumber, useChainId, useConnection } from "wagmi";
+import { chainName, elysiumMainnet } from "../lib/chains";
 import { useNetwork } from "../lib/network";
 import { SwitchButton } from "./Connect";
 import { Card, Empty } from "./Ui";
 
 /** A slim strip above the nav: which network this is, and that tokens here are test tokens. */
 export function TestnetStrip() {
-  const { target } = useNetwork();
-  const local = target.id === 31337;
+  // the chain the app reads from: the wallet's when it sits on a supported one, otherwise the target
+  const chainId = useChainId();
+  const local = chainId === 31337;
+  if (chainId === elysiumMainnet.id)
+    return (
+      <div className="strip" role="note">
+        <span className="strip-dot" />
+        <span>
+          <b>Elysium mainnet.</b> Coins on Eleos, Kleos and Boxa, with real value.
+        </span>
+      </div>
+    );
   return (
     <div className="strip" role="note">
       <span className="strip-dot" />

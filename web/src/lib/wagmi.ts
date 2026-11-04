@@ -1,7 +1,7 @@
 import { createConfig, createStorage, http } from "wagmi";
 import { injected, mock } from "wagmi/connectors";
 import type { Chain } from "viem";
-import { elysiumTestnet, localChain } from "./chains";
+import { elysiumMainnet, elysiumTestnet, localChain } from "./chains";
 import { deployedChainIds } from "./deployments";
 
 const deployed = deployedChainIds();
@@ -13,7 +13,7 @@ const envChain = Number(import.meta.env.VITE_CHAIN_ID) || undefined;
 export const TARGET_CHAIN_ID: number =
   envChain ?? (import.meta.env.DEV && deployed.includes(localChain.id) ? localChain.id : elysiumTestnet.id);
 
-const known: Chain[] = [elysiumTestnet, localChain];
+const known: Chain[] = [elysiumTestnet, elysiumMainnet, localChain];
 export const targetChain: Chain = known.find((c) => c.id === TARGET_CHAIN_ID) ?? elysiumTestnet;
 // Other chains are only listed when there is a Monarchy deployment for them.
 const others = known.filter((c) => c.id !== targetChain.id && deployed.includes(c.id));
@@ -31,6 +31,7 @@ export const config = createConfig({
     : [injected()],
   transports: {
     [elysiumTestnet.id]: http(),
+    [elysiumMainnet.id]: http(),
     [localChain.id]: http("http://127.0.0.1:8545"),
   },
   // A separate key on the dev server, so a chain remembered from the live site doesn't override the local default.

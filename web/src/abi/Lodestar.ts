@@ -6,6 +6,10 @@ export const lodestarAbi = [
     "stateMutability": "nonpayable"
   },
   {
+    "type": "receive",
+    "stateMutability": "payable"
+  },
+  {
     "type": "function",
     "name": "BPS",
     "inputs": [],
@@ -27,19 +31,6 @@ export const lodestarAbi = [
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "DEAD",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -111,7 +102,7 @@ export const lodestarAbi = [
   },
   {
     "type": "function",
-    "name": "MIN_SLIPPAGE_BPS",
+    "name": "MAX_SWAP_COST_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -124,7 +115,7 @@ export const lodestarAbi = [
   },
   {
     "type": "function",
-    "name": "SWAP_FEE_BPS",
+    "name": "MIN_SLIPPAGE_BPS",
     "inputs": [],
     "outputs": [
       {
@@ -167,6 +158,19 @@ export const lodestarAbi = [
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "burnSink",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -415,6 +419,19 @@ export const lodestarAbi = [
   },
   {
     "type": "function",
+    "name": "hook",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "initialize",
     "inputs": [
       {
@@ -423,17 +440,17 @@ export const lodestarAbi = [
         "internalType": "struct ILodestar.InitParams",
         "components": [
           {
-            "name": "launchpad",
+            "name": "source",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "hook",
             "type": "address",
             "internalType": "address"
           },
           {
             "name": "desk",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "poolManager",
             "type": "address",
             "internalType": "address"
           },
@@ -466,6 +483,11 @@ export const lodestarAbi = [
             "name": "tokenIs0",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "burnSink",
+            "type": "address",
+            "internalType": "address"
           },
           {
             "name": "exilePoolId",
@@ -573,19 +595,6 @@ export const lodestarAbi = [
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "launchpad",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IAscendLaunchpad"
       }
     ],
     "stateMutability": "view"
@@ -701,19 +710,6 @@ export const lodestarAbi = [
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "poolManager",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ICLPoolManager"
       }
     ],
     "stateMutability": "view"
@@ -879,6 +875,19 @@ export const lodestarAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract ISandfall"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "source",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IFeeSource"
       }
     ],
     "stateMutability": "view"
@@ -1515,6 +1524,11 @@ export const lodestarAbi = [
   },
   {
     "type": "error",
+    "name": "BadCallTarget",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "BuybackShort",
     "inputs": []
   },
@@ -1541,6 +1555,11 @@ export const lodestarAbi = [
   {
     "type": "error",
     "name": "InvalidConfig",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NativeNotAccepted",
     "inputs": []
   },
   {

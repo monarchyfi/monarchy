@@ -14,6 +14,7 @@ import { useLodestarCore, useTokenMeta } from "../lib/monarchy";
 import { NoDeployment } from "../components/States";
 import { Slider } from "../components/Slider";
 import { PageMark } from "../components/NavGlyphs";
+import { PadsLodestar } from "./LodestarPads";
 
 /** Lodestar.EXECUTION_WINDOW: how long a ready proposal can still be executed. */
 const EXECUTION_WINDOW = 7 * 86400;
@@ -28,6 +29,8 @@ export function LodestarPage() {
   const defaultToken = d && isSet(d.token) ? d.token : undefined;
   const [defaultMeta, defaultQuoteMeta] = useTokenMeta([defaultToken, d?.quote]);
   if (!d) return <NoDeployment />;
+  // Elysium mainnet before Ascend is there: the coins to activate are on Eleos, Kleos and Boxa
+  if (d.pads && d.mode === "launchpads") return <PadsLodestar pads={d.pads} />;
   const token = isAddress(input) ? input : defaultToken;
   const badInput = input !== "" && !isAddress(input);
   // Ascend pools can pair with any quote asset (USDC, WHYPE, a tokenized stock...), and the router address
@@ -105,19 +108,25 @@ function ForToken({ d, token, quote }: { d: Deployment; token: Address; quote: A
   if (!r.data) return <LoadingCard />;
   const [deployed, [predicted, poolId]] = r.data;
   return deployed !== ZERO ? (
-    <Router d={d} lodestar={deployed} />
+    <Router env={ascendEnv(d)} lodestar={deployed} />
   ) : (
     <Activate d={d} token={token} quote={quote} predicted={predicted} poolId={poolId} />
   );
 }
 
+/** Where a router lives: the Exile and factory it was made with, and the launchpad that holds its coin's creator
+ * role. `launchpad` is Ascend's, for its listing set-aside; routers on Eleos, Kleos and Boxa have none. */
+export type RouterEnv = { exile: Address; factory: Address; launchpad?: Address; venue: string; priceRef: string };
+
+const ascendEnv = (d: Deployment): RouterEnv => ({ exile: d.exile, factory: d.factory, launchpad: d.launchpad, venue: "Ascend", priceRef: "Ascend's EMA" });
+
 /** Distribute, after catching Exile's reward pool up when a long pause left it far behind. distribute catches it up
  * itself, but then it needs more gas than a wallet estimates (and older routers park the payouts without moving
  * the pool), so like the keeper the card pokes the pool forward first, EXILE_CATCH_UP_HOURS per transaction. */
-function DistributeButton({ d, lodestar, exilePoolId }: { d: Deployment; lodestar: Address; exilePoolId?: bigint }) {
-  const poke = exilePoolId === undefined ? undefined : ({ address: d.exile, abi: exileAbi, functionName: "poke", args: [exilePoolId, BigInt(EXILE_CATCH_UP_HOURS)] } as const);
+function DistributeButton({ exile, lodestar, exilePoolId }: { exile: Address; lodestar: Address; exilePoolId?: bigint }) {
+  const poke = exilePoolId === undefined ? undefined : ({ address: exile, abi: exileAbi, functionName: "poke", args: [exilePoolId, BigInt(EXILE_CATCH_UP_HOURS)] } as const);
   // what one catch-up costs right now: a few idle hours cost little, weeks of expiring locks cost millions
-  const catchUp = useEstimateGas({ to: d.exile, data: poke && encodeFunctionData(poke), query: { enabled: !!poke, ...POLL.query } });
+  const catchUp = useEstimateGas({ to: exile, data: poke && encodeFunctionData(poke), query: { enabled: !!poke, ...POLL.query } });
   const heavy = (catchUp.data ?? 0n) > CATCH_UP_ALONE_ABOVE_GAS;
   return (
     <>
@@ -127,7 +136,7 @@ function DistributeButton({ d, lodestar, exilePoolId }: { d: Deployment; lodesta
           <TxButton request={() => poke}>Catch up rewards</TxButton>
         </>
       )}
-      <TxButton disabledReason={heavy ? "Catch up rewards first" : undefined} request={() => ({ address: lodestar, abi: lodestarAbi, functionName: "distribute" })}>
+      <TxButton headroom disabledReason={heavy ? "Catch up rewards first" : undefined} request={() => ({ address: lodestar, abi: lodestarAbi, functionName: "distribute" })}>
         Distribute
       </TxButton>
     </>
@@ -136,7 +145,7 @@ function DistributeButton({ d, lodestar, exilePoolId }: { d: Deployment; lodesta
 
 // ==================================================================== router dashboard
 
-function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
+export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address }) {
   const { address } = useConnection();
   const core = useLodestarCore(lodestar);
   const now = useNow();
@@ -163,17 +172,17 @@ function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
   const listing = useReadContracts({
     allowFailure: false,
     contracts: [
-      { address: d.launchpad, abi: iAscendLaunchpadAbi, functionName: "listingElection", args: [core.poolId ?? "0x"] },
-      { address: d.launchpad, abi: iAscendLaunchpadAbi, functionName: "listingOwed", args: [core.poolId ?? "0x"] },
+      { address: env.launchpad, abi: iAscendLaunchpadAbi, functionName: "listingElection", args: [core.poolId ?? "0x"] },
+      { address: env.launchpad, abi: iAscendLaunchpadAbi, functionName: "listingOwed", args: [core.poolId ?? "0x"] },
     ],
-    query: { enabled: !!core.poolId, ...POLL.query },
+    query: { enabled: !!core.poolId && isSet(env.launchpad), ...POLL.query },
   });
   // routers and factories from before the upgrade path don't have these, so a failed read means none
   const up = useReadContracts({
     contracts: [
       { ...l, functionName: "upgradeTarget" },
       { ...l, functionName: "upgradeEta" },
-      { address: d.factory, abi: lodestarFactoryAbi, functionName: "successor" },
+      { address: env.factory, abi: lodestarFactoryAbi, functionName: "successor" },
       { ...l, functionName: "upgradeFactory" },
     ],
     query: POLL.query,
@@ -229,9 +238,10 @@ function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
           <Row k="Router" v={<Addr address={lodestar} />} />
           <Row k="Steward" v={<Addr address={core.steward} />} />
           {Number(lockedUntil) > now && <Row k="Creator role" v={`Locked ${lockForever ? "forever" : `until ${date(lockedUntil)}`}*`} />}
-          <Row k="Token-side fees" v={cfg.tokenToHolders ? <Badge tone="gold">All paid to Exile lockers</Badge> : <Badge tone="grey">All burned</Badge>} />
+          {/* Eleos, Kleos and Boxa take no tax in the coin, so only Ascend routers have token-side fees to route */}
+          {env.launchpad && <Row k="Token-side fees" v={cfg.tokenToHolders ? <Badge tone="gold">All paid to Exile lockers</Badge> : <Badge tone="grey">All burned</Badge>} />}
           <Row k="Buyback route" v={cfg.swapper === ZERO ? <Badge tone="amber">None: buybacks wait in reserve</Badge> : <Addr address={cfg.swapper} />} />
-          <Row k="Max slippage" v={`${pct(cfg.maxSlippageBps)} vs Ascend's EMA`} />
+          <Row k="Max slippage" v={`${pct(cfg.maxSlippageBps)} vs ${env.priceRef}`} />
           {listingLive && <Row k="Listing set-aside" v={<><Badge tone="green">Enrolled</Badge> {fmt(owed, qd)} of {fmt(owed + (election >> 168n), qd)} {qs} saved</>} />}
           <Row k="Last distribute" v={Number(lastAt) ? `${duration(now - Number(lastAt))} ago` : "never"} />
         </div>
@@ -246,7 +256,7 @@ function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
       </Card>
 
       <Card title="Distribute" right={<span className="muted small">Anyone can call this</span>}>
-        <p className="muted small">Collects and claims this token's creator fees from Ascend, then routes everything the router holds.</p>
+        <p className="muted small">Collects and claims this token's creator fees from {env.venue}, then routes everything the router holds.</p>
         <div className="stats stats-4">
           <Stat label={cfg.tokenToHolders ? "Token fees to lockers" : "Token fees to burn"} value={<Amt value={preview[0]} digits={0} symbol={ts} />} />
           <Stat label="Buyback" value={<Amt value={preview[2] + reserve} decimals={qd} symbol={qs} />} hint={reserve > 0n ? `Includes ${fmt(reserve, qd)} waiting in reserve` : undefined} />
@@ -255,7 +265,7 @@ function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
         </div>
         <p className="muted small">Plus any fees still sitting in the pool, which distribute collects first.</p>
         <p className="small cadence">{DISTRIBUTE_NOTE}</p>
-        <DistributeButton d={d} lodestar={lodestar} exilePoolId={core.exilePoolId} />
+        <DistributeButton exile={env.exile} lodestar={lodestar} exilePoolId={core.exilePoolId} />
       </Card>
 
       {eta > 0n && (
@@ -276,7 +286,7 @@ function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
         </Card>
       )}
 
-      {core.exilePoolId !== undefined && <PendingTiers d={d} lodestar={lodestar} poolId={core.exilePoolId} isSteward={isSteward} now={now} />}
+      {core.exilePoolId !== undefined && <PendingTiers exile={env.exile} lodestar={lodestar} poolId={core.exilePoolId} isSteward={isSteward} now={now} />}
 
       {upEta > 0n && upTarget && (
         <Card title="Pending upgrade" right={<Badge tone="amber">7 day notice</Badge>}>
@@ -311,8 +321,8 @@ function Router({ d, lodestar }: { d: Deployment; lodestar: Address }) {
 
 /** A tier change the steward proposed, shown to everyone for its 12 hours, next to the tiers it replaces. Exile carries it
  * out for anyone once the wait is over, and the steward can cancel it through the router until then. */
-function PendingTiers({ d, lodestar, poolId, isSteward, now }: { d: Deployment; lodestar: Address; poolId: bigint; isSteward: boolean; now: number }) {
-  const pool = useReadContract({ address: d.exile, abi: exileAbi, functionName: "poolInfo", args: [poolId], query: POLL.query });
+function PendingTiers({ exile, lodestar, poolId, isSteward, now }: { exile: Address; lodestar: Address; poolId: bigint; isSteward: boolean; now: number }) {
+  const pool = useReadContract({ address: exile, abi: exileAbi, functionName: "poolInfo", args: [poolId], query: POLL.query });
   const eta = Number(pool.data?.tiersEta ?? 0n);
   if (!pool.data || eta === 0) return null;
   const expired = now > eta + EXECUTION_WINDOW;
@@ -358,7 +368,7 @@ function PendingTiers({ d, lodestar, poolId, isSteward, now }: { d: Deployment; 
       <div className="lock-actions">
         <TxButton
           disabledReason={eta > now ? "Timelock still running" : expired ? "Expired, the steward can propose it again" : undefined}
-          request={() => ({ address: d.exile, abi: exileAbi, functionName: "executeTiers", args: [poolId] })}
+          request={() => ({ address: exile, abi: exileAbi, functionName: "executeTiers", args: [poolId] })}
         >
           Execute
         </TxButton>
@@ -539,6 +549,116 @@ function TierPicker({ tiers, setTiers }: { tiers: TierChoice[]; setTiers: (t: Ti
   );
 }
 
+/** The settings a creator picks when activating, on any launchpad: the split, where token-side fees go, the tiers,
+ * the Team Treasury stream and the creator lock. `problem` is why the deploy can't go out yet, in words. */
+export function useActivationSettings() {
+  const [split, setSplit] = useState({ burn: 20, holders: 50, treasury: 30 });
+  const [toHolders, setToHolders] = useState(true);
+  const [treasury, setTreasury] = useState("");
+  const [windowDays, setWindowDays] = useState(DEFAULT_TREASURY_WINDOW_DAYS);
+  const [tiers, setTiers] = useState(DEFAULT_TIERS);
+  const [lockForever, setLockForever] = useState(true);
+  const sum = split.burn + split.holders + split.treasury;
+  // The stream's recipient can never be changed, so it is never filled in silently: the creator types it
+  // or presses "Use my wallet", and the button stays off until the field holds a valid address.
+  const recipient = isAddress(treasury) ? treasury : undefined;
+  // the same rules Exile and Sandfall check on deploy, so the button never sends a deploy that has to revert
+  const tierProblem = tierRules(tiers);
+  const windowBad = !(windowDays >= 1 && windowDays <= 365);
+  const problem =
+    sum !== 100
+      ? `Splits add up to ${sum}%`
+      : tierProblem
+        ? "Fix the reward tiers"
+        : !recipient
+          ? "Enter the Team Treasury recipient"
+          : windowBad
+            ? "The stream window is 1 to 365 days"
+            : undefined;
+  /** LodestarFactory.deploy's params for these settings. `swapper` 0 takes the factory's default. */
+  const params = (token: Address, quote: Address, swapper: Address) => ({
+    token,
+    quote,
+    cfg: { burnBps: split.burn * 100, holdersBps: split.holders * 100, treasuryBps: split.treasury * 100, swapper, maxSlippageBps: 1000, tokenToHolders: toHolders },
+    treasuryRecipient: recipient ?? ZERO,
+    treasuryWindow: Math.round(windowDays * 86400),
+    tiers: tiers.map((t) => ({ minDuration: Math.round(t.days * 86400), multiplierBps: Math.round(t.mult * 10_000), label: stringToHex(t.name, { size: 32 }) })),
+    // no HyperCore listing savings: the creator's whole fee share reaches the router
+    enrolListing: false,
+    listingCap: 0n,
+    // locked for good: the largest unlock time the router accepts
+    creatorLockUntil: lockForever ? 2n ** 64n - 1n : 0n,
+  });
+  return { split, setSplit, toHolders, setToHolders, treasury, setTreasury, windowDays, setWindowDays, tiers, setTiers, lockForever, setLockForever, tierProblem, problem, params };
+}
+
+export type ActivationSettingsState = ReturnType<typeof useActivationSettings>;
+
+/** The settings form. `tokenRoute` offers the choice for token-side fees, which only Ascend pools have. */
+export function ActivationSettings({ s, tokenRoute = true }: { s: ActivationSettingsState; tokenRoute?: boolean }) {
+  const { address } = useConnection();
+  const badTreasury = s.treasury !== "" && !isAddress(s.treasury);
+  return (
+    <div className="form-block">
+      <h5>{tokenRoute ? "Split of the quote-side fees" : "Split of the creator fees"}</h5>
+      <SplitInputs split={s.split} setSplit={s.setSplit} />
+      {tokenRoute && (
+        <>
+          <h5>Token-side fees</h5>
+          <TokenRoute name="activate-token-route" value={s.toHolders} onChange={s.setToHolders} />
+        </>
+      )}
+      <h5>Exile reward tiers</h5>
+      <p className="muted small">
+        The four tier names are the same on every Monarchy token, so holders always know what a Duke lock means. Pick how long each tier's
+        lock has to be and how big a share it earns.
+      </p>
+      <TierPicker tiers={s.tiers} setTiers={s.setTiers} />
+      {s.tierProblem && <p className="warn small">{s.tierProblem}</p>}
+      <div className="form">
+        <label>
+          Team Treasury recipient
+          <div className="input-row">
+            <input className="input mono-input" placeholder="0x…" value={s.treasury} onChange={(e) => s.setTreasury(e.target.value.trim())} spellCheck={false} autoComplete="off" />
+            <button type="button" className="btn btn-ghost btn-sm" disabled={!address} onClick={() => address && s.setTreasury(address)}>
+              Use my wallet
+            </button>
+          </div>
+        </label>
+      </div>
+      <p className={badTreasury ? "warn small field-help" : "muted small field-help"}>
+        {badTreasury
+          ? "That isn't a valid address yet."
+          : "This address receives the Team Treasury stream. It can never be changed, not even by the steward, so check it twice."}
+      </p>
+      <label className="field">
+        <span className="field-label">Treasury stream window</span>
+        <select className="input" style={{ maxWidth: 220 }} value={s.windowDays} onChange={(e) => s.setWindowDays(Number(e.target.value))}>
+          {WINDOW_DAYS.map((n) => (
+            <option key={n} value={n}>
+              {dayCount(n)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="muted small field-help">
+        Each distribute adds the Team Treasury share to a Sandfall stream, which pays it out to the recipient bit by bit over this window
+        instead of all at once, so holders can watch it flow. It can't be changed later.
+      </p>
+      <h5>Creator role</h5>
+      <label className="check">
+        <input type="checkbox" checked={s.lockForever} onChange={(e) => s.setLockForever(e.target.checked)} />
+        Lock the creator role to this router forever
+      </label>
+      <p className="muted small">
+        {s.lockForever
+          ? "Holders can see the fee stream can't be moved away from this router, and you can't unlock it later. One exception: a move to this token's router on a newer Monarchy factory, which Monarchy and you both have to approve, announced to holders 7 days ahead."
+          : "Without a lock the steward could hand the creator role away later. You can still lock it forever from the steward controls."}
+      </p>
+    </div>
+  );
+}
+
 function Activate({ d, token, quote, predicted, poolId }: { d: Deployment; token: Address; quote: Address; predicted: Address; poolId: `0x${string}` }) {
   const { address } = useConnection();
   const lp = { address: d.launchpad, abi: iAscendLaunchpadAbi } as const;
@@ -552,12 +672,7 @@ function Activate({ d, token, quote, predicted, poolId }: { d: Deployment; token
     ],
     query: POLL.query,
   });
-  const [split, setSplit] = useState({ burn: 20, holders: 50, treasury: 30 });
-  const [toHolders, setToHolders] = useState(true);
-  const [treasury, setTreasury] = useState("");
-  const [windowDays, setWindowDays] = useState(DEFAULT_TREASURY_WINDOW_DAYS);
-  const [tiers, setTiers] = useState(DEFAULT_TIERS);
-  const [lockForever, setLockForever] = useState(true);
+  const s = useActivationSettings();
 
   if (!r.data) return <LoadingCard />;
   const [creator, pendingCreator, owedQ, owedT] = r.data;
@@ -569,14 +684,6 @@ function Activate({ d, token, quote, predicted, poolId }: { d: Deployment; token
     );
   const you = !!address && creator.toLowerCase() === address.toLowerCase();
   const handedOver = pendingCreator.toLowerCase() === predicted.toLowerCase();
-  const sum = split.burn + split.holders + split.treasury;
-  // The stream's recipient can never be changed, so it is never filled in silently: the creator types it
-  // or presses "Use my wallet", and the button stays off until the field holds a valid address.
-  const recipient = isAddress(treasury) ? treasury : undefined;
-  const badTreasury = treasury !== "" && !isAddress(treasury);
-  // the same rules Exile and Sandfall check on deploy, so the button never sends a deploy that has to revert
-  const tierProblem = tierRules(tiers);
-  const windowBad = !(windowDays >= 1 && windowDays <= 365);
 
   return (
     <Card title="Activate Lodestar" right={<Badge tone="grey">2 transactions</Badge>}>
@@ -604,96 +711,16 @@ function Activate({ d, token, quote, predicted, poolId }: { d: Deployment; token
         <li>
           <h4>2. Activate</h4>
           <p className="muted small">Creates the router, its Exile reward pool and its Sandfall treasury stream, and accepts the role, in one transaction.</p>
-          <div className="form-block">
-            <h5>Split of the quote-side fees</h5>
-            <SplitInputs split={split} setSplit={setSplit} />
-            <h5>Token-side fees</h5>
-            <TokenRoute name="activate-token-route" value={toHolders} onChange={setToHolders} />
-            <h5>Exile reward tiers</h5>
-            <p className="muted small">
-              The four tier names are the same on every Monarchy token, so holders always know what a Duke lock means. Pick how long each tier's
-              lock has to be and how big a share it earns.
-            </p>
-            <TierPicker tiers={tiers} setTiers={setTiers} />
-            {tierProblem && <p className="warn small">{tierProblem}</p>}
-            <div className="form">
-              <label>
-                Team Treasury recipient
-                <div className="input-row">
-                  <input className="input mono-input" placeholder="0x…" value={treasury} onChange={(e) => setTreasury(e.target.value.trim())} spellCheck={false} autoComplete="off" />
-                  <button type="button" className="btn btn-ghost btn-sm" disabled={!address} onClick={() => address && setTreasury(address)}>
-                    Use my wallet
-                  </button>
-                </div>
-              </label>
-            </div>
-            <p className={badTreasury ? "warn small field-help" : "muted small field-help"}>
-              {badTreasury
-                ? "That isn't a valid address yet."
-                : "This address receives the Team Treasury stream. It can never be changed, not even by the steward, so check it twice."}
-            </p>
-            <label className="field">
-              <span className="field-label">Treasury stream window</span>
-              <select className="input" style={{ maxWidth: 220 }} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}>
-                {WINDOW_DAYS.map((n) => (
-                  <option key={n} value={n}>
-                    {dayCount(n)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="muted small field-help">
-              Each distribute adds the Team Treasury share to a Sandfall stream, which pays it out to the recipient bit by bit over this window
-              instead of all at once, so holders can watch it flow. It can't be changed later.
-            </p>
-            <h5>Creator role</h5>
-            <label className="check">
-              <input type="checkbox" checked={lockForever} onChange={(e) => setLockForever(e.target.checked)} />
-              Lock the creator role to this router forever
-            </label>
-            <p className="muted small">
-              {lockForever
-                ? "Holders can see the fee stream can't be moved away from this router, and you can't unlock it later. One exception: a move to this token's router on a newer Monarchy factory, which Monarchy and you both have to approve, announced to holders 7 days ahead."
-                : "Without a lock the steward could hand the creator role away later. You can still lock it forever from the steward controls."}
-            </p>
-          </div>
+          <ActivationSettings s={s} />
           <TxButton
-            disabledReason={
-              !you
-                ? "Only the current creator can activate"
-                : !handedOver
-                  ? "Do step 1 first"
-                  : sum !== 100
-                    ? `Splits add up to ${sum}%`
-                    : tierProblem
-                      ? "Fix the reward tiers"
-                      : !recipient
-                        ? "Enter the Team Treasury recipient"
-                        : windowBad
-                          ? "The stream window is 1 to 365 days"
-                          : undefined
-            }
-            request={() => recipient && ({
+            disabledReason={!you ? "Only the current creator can activate" : !handedOver ? "Do step 1 first" : s.problem}
+            request={() => ({
               address: d.factory,
               abi: lodestarFactoryAbi,
               functionName: "deploy",
               gas: 6_000_000n,
-              args: [
-                {
-                  token,
-                  quote,
-                  // the buyback route is the AscendSwapper this deployment recorded, never the factory's default of the day
-                  cfg: { burnBps: split.burn * 100, holdersBps: split.holders * 100, treasuryBps: split.treasury * 100, swapper: d.swapper, maxSlippageBps: 1000, tokenToHolders: toHolders },
-                  treasuryRecipient: recipient,
-                  treasuryWindow: Math.round(windowDays * 86400),
-                  tiers: tiers.map((t) => ({ minDuration: Math.round(t.days * 86400), multiplierBps: Math.round(t.mult * 10_000), label: stringToHex(t.name, { size: 32 }) })),
-                  // no HyperCore listing savings: the creator's whole fee share reaches the router
-                  enrolListing: false,
-                  listingCap: 0n,
-                  // locked for good: the largest unlock time the router accepts
-                  creatorLockUntil: lockForever ? 2n ** 64n - 1n : 0n,
-                },
-              ],
+              // the buyback route is the AscendSwapper this deployment recorded, never the factory's default of the day
+              args: [s.params(token, quote, d.swapper)],
             })}
           >
             Activate Lodestar
@@ -724,7 +751,7 @@ function tierRules(tiers: { name: string; days: number; mult: number }[]): strin
   return undefined;
 }
 
-function LoadingCard() {
+export function LoadingCard() {
   return (
     <Card title={<Skel w="9em" h="1.1em" />}>
       <Skel block h="12px" w="100%" style={{ borderRadius: 999, marginBottom: 16 }} />

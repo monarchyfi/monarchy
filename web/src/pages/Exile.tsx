@@ -1,18 +1,18 @@
 import { useMemo, useState } from "react";
 import { useConnection, useReadContract, useReadContracts } from "wagmi";
 import { erc721Abi, isAddress, parseUnits, type Address } from "viem";
-import { exileAbi, lodestarAbi, lodestarFactoryAbi, mockERC20Abi } from "../abi";
+import { exileAbi, lodestarAbi, mockERC20Abi } from "../abi";
 import { tagline, TierBadge } from "../components/Tiers";
 import { TxButton, WithApproval } from "../components/Tx";
 import { ConnectPrompt, NoDeployment } from "../components/States";
 import { Addr, Amt, Badge, Card, Empty, Row, Skel, Stat, Sym, TokenAddr } from "../components/Ui";
 import { Slider } from "../components/Slider";
 import { PageMark } from "../components/NavGlyphs";
-import { useDeployment, ZERO } from "../lib/deployments";
+import { isSet, useDeployment, ZERO } from "../lib/deployments";
 import { date, duration, fmt, label, mult } from "../lib/format";
 import { POLL, useNow, usePageTitle, useTicking } from "../lib/hooks";
 import { DISTRIBUTE_NOTE } from "../lib/constants";
-import { dayLabel, useDripDays, useLockedTotal, useLodestarCore, useTokenMeta, type TokenMeta } from "../lib/monarchy";
+import { dayLabel, useDripDays, useLockedTotal, useLodestarCore, useRouterOf, useTokenMeta, NATIVE_META, type TokenMeta } from "../lib/monarchy";
 import { days } from "./Home";
 
 type Tier = { minDuration: number; multiplierBps: number; label: `0x${string}` };
@@ -24,7 +24,9 @@ export function ExilePage() {
   usePageTitle("Exile");
   const d = useDeployment();
   const core = useLodestarCore();
-  const [mode, setMode] = useState<"main" | "else">("main");
+  // a chain with no featured token (Elysium mainnet, where the coins are on Eleos, Kleos and Boxa) opens on "Lock a coin"
+  const featured = isSet(d?.lodestar);
+  const [mode, setMode] = useState<"main" | "else">(featured ? "main" : "else");
   const poolId = core.exilePoolId;
   const pool = useReadContract({
     address: d?.exile,
@@ -65,9 +67,9 @@ export function ExilePage() {
       </header>
 
       <Card
-        title={mode === "main" ? <>Lock <Sym s={sym} /></> : "Lock something else"}
+        title={mode === "main" ? <>Lock <Sym s={sym} /></> : featured ? "Lock something else" : "Lock a coin"}
         right={
-          <Switch
+          featured && <Switch
             options={[
               { key: "main", label: sym ?? "Token" },
               { key: "else", label: "Something else" },
@@ -81,12 +83,12 @@ export function ExilePage() {
           {mode === "main" ? (
             <LockForm exile={d.exile} token={core.token} tokenMeta={core.tokenMeta} poolId={poolId} tiers={tiers} tiersLoading={tiersLoading} rates={pool.data} rewardMeta={rewardMeta} />
           ) : (
-            <SomethingElse exile={d.exile} factory={d.factory} />
+            <SomethingElse exile={d.exile} />
           )}
         </div>
       </Card>
 
-      <Card
+      {featured && <Card
         title={
           <>
             <Sym s={core.tokenMeta?.symbol} /> holder rewards
@@ -111,9 +113,10 @@ export function ExilePage() {
           </div>
         )}
         <p className="small cadence">{DISTRIBUTE_NOTE}</p>
-      </Card>
+      </Card>}
 
-      <MyLocks exile={d.exile} tiers={tiers} rewardMeta={rewardMeta} stakeMeta={stakeMeta} />
+      {/* without a featured token the rewards are the launchpads' quote, native HYPE */}
+      <MyLocks exile={d.exile} tiers={tiers} rewardMeta={featured ? rewardMeta : NATIVE_META} stakeMeta={stakeMeta} />
     </div>
   );
 }
@@ -250,7 +253,7 @@ function LockForm({
           )}
           {/* Approve is only offered once the lock itself could go through */}
           <WithApproval token={token} spender={exile} amount={reason ? 0n : value}>
-            <TxButton
+            <TxButton headroom
               disabledReason={reason}
               request={() =>
                 token && {
@@ -286,14 +289,14 @@ function estimate(r: Rates, points: bigint, seconds: number): { quote: bigint; s
 }
 
 /** "Something else": any token or LP (with rewards when it has a Lodestar), or an NFT. */
-function SomethingElse({ exile, factory }: { exile: Address; factory: Address }) {
+function SomethingElse({ exile }: { exile: Address }) {
   const [kind, setKind] = useState<"token" | "nft">("token");
   const [input, setInput] = useState("");
   const token = isAddress(input) ? input : undefined;
   const bad = input !== "" && !token;
   // a token with its own Lodestar has its own Exile reward pool and tiers
-  const lodestar = useReadContract({ address: factory, abi: lodestarFactoryAbi, functionName: "lodestarOf", args: [token ?? ZERO], query: { enabled: !!token } });
-  const router = lodestar.data && lodestar.data !== ZERO ? lodestar.data : undefined;
+  const lodestar = useRouterOf(token);
+  const router = lodestar.router;
   const pid = useReadContract({ address: router, abi: lodestarAbi, functionName: "exilePoolId", query: { enabled: !!router } });
   const pool = useReadContract({ address: exile, abi: exileAbi, functionName: "poolInfo", args: [pid.data ?? 0n], query: { enabled: pid.data !== undefined } });
   const tiers = (pool.data?.tiers ?? []) as readonly Tier[];
@@ -343,7 +346,7 @@ function SomethingElse({ exile, factory }: { exile: Address; factory: Address })
 }
 
 /** A sliding knob between options. */
-function Switch({ options, value, onChange }: { options: { key: string; label: string }[]; value: string; onChange: (k: string) => void }) {
+export function Switch({ options, value, onChange }: { options: { key: string; label: string }[]; value: string; onChange: (k: string) => void }) {
   const i = Math.max(0, options.findIndex((o) => o.key === value));
   return (
     <div className="switch" role="tablist">
@@ -465,7 +468,7 @@ function LockNfts({ exile }: { exile: Address }) {
           Approve collection
         </TxButton>
       ) : (
-        <TxButton
+        <TxButton headroom
           key="lock"
           disabledReason={!ok ? "Enter a collection" : tokenId === undefined ? "Enter a token id" : kind === "1155" && count === 0n ? "Enter a whole amount" : undefined}
           request={() =>
@@ -599,7 +602,7 @@ function LockCard({ exile, id, tiers: mainTiers, rewardMeta: mainReward, stakeMe
       </div>
       <div className="lock-actions">
         {lock.poolId !== 0n && (
-          <TxButton className="btn btn-sm" disabledReason={!pending && !pendingStake ? "Nothing to claim" : undefined} request={() => ({ ...base, functionName: "claimRewards", args: [id] })}>
+          <TxButton headroom className="btn btn-sm" disabledReason={!pending && !pendingStake ? "Nothing to claim" : undefined} request={() => ({ ...base, functionName: "claimRewards", args: [id] })}>
             Claim
           </TxButton>
         )}
@@ -607,7 +610,7 @@ function LockCard({ exile, id, tiers: mainTiers, rewardMeta: mainReward, stakeMe
           <div className="extend">
             <input className="input input-sm" type="number" min={1} step={1} aria-label="Extend by this many days" value={extendDays} onChange={(e) => setExtendDays(Number(e.target.value))} />
             <span className="muted small">days</span>
-            <TxButton className="btn btn-sm btn-ghost" disabledReason={!(Number.isInteger(extendDays) && extendDays >= 1) ? "Whole days, at least 1" : undefined} request={() => ({ ...base, functionName: "extend", args: [id, BigInt(newUnlock + BUFFER)] })}>
+            <TxButton headroom className="btn btn-sm btn-ghost" disabledReason={!(Number.isInteger(extendDays) && extendDays >= 1) ? "Whole days, at least 1" : undefined} request={() => ({ ...base, functionName: "extend", args: [id, BigInt(newUnlock + BUFFER)] })}>
               Extend
               {lock.poolId !== 0n && (newTier?.multiplierBps ?? 0) !== lock.multiplierBps
                 ? newTier
@@ -618,7 +621,7 @@ function LockCard({ exile, id, tiers: mainTiers, rewardMeta: mainReward, stakeMe
           </div>
         )}
         {!lock.withdrawn && (
-          <TxButton className="btn btn-sm btn-ghost" disabledReason={!ended ? "Still locked" : undefined} request={() => ({ ...base, functionName: "withdraw", args: [id] })}>
+          <TxButton headroom className="btn btn-sm btn-ghost" disabledReason={!ended ? "Still locked" : undefined} request={() => ({ ...base, functionName: "withdraw", args: [id] })}>
             Withdraw
           </TxButton>
         )}

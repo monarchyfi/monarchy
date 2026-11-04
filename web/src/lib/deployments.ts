@@ -1,9 +1,10 @@
 import { useChainId } from "wagmi";
 import type { Address, Hex } from "viem";
+import { launchpadsByChain, type LaunchpadsDeployment } from "./launchpads";
 
 export type Deployment = {
   chainId: number;
-  mode: "real" | "mock";
+  mode: "real" | "mock" | "launchpads";
   launchpad: Address;
   desk: Address;
   poolManager: Address;
@@ -18,14 +19,46 @@ export type Deployment = {
   poolId: Hex;
   lodestar: Address;
   startBlock: number;
+  /** Eleos, Kleos and Boxa on this chain (deployments/launchpads/<chainId>.json), which share this Exile and Sandfall. */
+  pads?: LaunchpadsDeployment;
 };
+
+export const ZERO = "0x0000000000000000000000000000000000000000" as Address;
 
 // deployments/<chainId>.json is written by the forge scripts; missing chains just aren't listed.
 const files = import.meta.glob<Deployment>("../../../deployments/*.json", { eager: true, import: "default" });
 const byChain: Record<number, Deployment> = {};
 for (const d of Object.values(files)) byChain[d.chainId] = d;
 
-export const ZERO = "0x0000000000000000000000000000000000000000" as Address;
+// A chain with only the launchpads' deployment (Elysium mainnet before Ascend arrives there) still gets one, built
+// from the shared core, so Exile, Sandfall and the Garden work there. It has no Ascend launchpad and no featured
+// token: every Ascend-only field is zero.
+for (const pads of Object.values(launchpadsByChain)) {
+  const d = byChain[pads.chainId];
+  if (d) {
+    byChain[pads.chainId] = { ...d, pads };
+    continue;
+  }
+  byChain[pads.chainId] = {
+    chainId: pads.chainId,
+    mode: "launchpads",
+    launchpad: ZERO,
+    desk: ZERO,
+    poolManager: ZERO,
+    vault: ZERO,
+    quote: ZERO, // native HYPE
+    exile: pads.exile,
+    sandfall: pads.sandfall,
+    lodestarImpl: pads.lodestarImpl,
+    factory: ZERO,
+    swapper: ZERO,
+    token: ZERO,
+    poolId: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    lodestar: ZERO,
+    startBlock: pads.startBlock,
+    pads,
+  };
+}
 
 export function useDeployment(): Deployment | undefined {
   const chainId = useChainId();

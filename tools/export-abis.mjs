@@ -14,13 +14,20 @@ const contracts = [
   "IAscendLaunchpad",
   "IListingDesk",
   "MockERC20",
+  // the launchpad adapters' shared shape and the Eleos, Kleos and Boxa hooks, for activations on those launchpads
+  "V4FeeSource",
+  "ILaunchpadHooks:IEleosHook",
+  "ILaunchpadHooks:IKleosHook",
+  "ILaunchpadHooks:IBoxaHook",
 ];
 const outDir = join(root, "web/src/abi");
 mkdirSync(outDir, { recursive: true });
 
 const index = [];
-for (const name of contracts) {
-  const artifact = JSON.parse(readFileSync(join(root, "out", `${name}.sol`, `${name}.json`), "utf8"));
+// "File:Contract" for a contract that shares its source file with others
+for (const entry of contracts) {
+  const [file, name = file] = entry.split(":");
+  const artifact = JSON.parse(readFileSync(join(root, "out", `${file}.sol`, `${name}.json`), "utf8"));
   const id = name[0].toLowerCase() + name.slice(1) + "Abi";
   writeFileSync(
     join(outDir, `${name}.ts`),
