@@ -5,21 +5,22 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IAscendLaunchpad} from "./interfaces/IAscendLaunchpad.sol";
 import {IListingDesk} from "./interfaces/IListingDesk.sol";
-import {ICLPoolManager} from "./interfaces/IInfinity.sol";
-import {IBuybackSwapper} from "./interfaces/IBuybackSwapper.sol";
+import {IBuybackSwapper, INativeBuybackSwapper} from "./interfaces/IBuybackSwapper.sol";
+import {IFeeSource} from "./interfaces/IFeeSource.sol";
 import {IExile} from "./interfaces/IExile.sol";
 import {ISandfall} from "./interfaces/ISandfall.sol";
 import {ILodestar} from "./interfaces/ILodestar.sol";
 import {ILodestarFactory} from "./interfaces/ILodestarFactory.sol";
 
 /// @title Lodestar
-/// @notice Fee router for one Ascend token. Once it holds the token's creator role on Ascend, every
-/// creator fee lands here, and anyone can call `distribute()` to route it:
+/// @notice Fee router for one launchpad token (Ascend, Boxa, Kleos or Eleos). Once it holds the token's creator
+/// role on the launchpad, every creator fee lands here, and anyone can call `distribute()` to route it:
 ///   - project-token fees are burned, or, if the creator chose so, paid in full to Exile lockers;
-///   - quote fees are split by the creator's chosen percentages between buyback and burn,
-///     Exile holder rewards and the Team Treasury (a Sandfall stream).
+///   - quote fees (an ERC-20, or native HYPE) are split by the creator's chosen percentages between buyback
+///     and burn, Exile holder rewards and the Team Treasury (a Sandfall stream).
+/// Everything launchpad specific goes through the launchpad's fee-source adapter, fixed at initialize, and the
+/// router only ever sends launchpad calls to the contract that holds the creator role.
 /// Split changes wait behind a 12 hour timelock. The creator role can be locked here forever, so the
 /// router can't be swapped out; even then it can move to this token's router on a newer Monarchy
 /// factory, proposed by the steward and announced 7 days ahead. No protocol fee. Deployed as one minimal
@@ -28,7 +29,9 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS = 10_000;
-    uint256 public constant SWAP_FEE_BPS = 100; // Ascend's 1% pool fee
+    /// @dev A buy that costs more than this in fees and tax right now (a launch's anti-snipe window, a raised tax)
+    /// is not tried; the buyback share waits in reserve.
+    uint256 public constant MAX_SWAP_COST_BPS = 500;
     uint256 public constant MIN_SLIPPAGE_BPS = 100;
     uint256 public constant MAX_SLIPPAGE_BPS = 2_000;
     uint64 public constant TIMELOCK = 12 hours;
@@ -55,20 +58,22 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// running distribute out of gas; each call still moves the pool forward by this much, and a call sent
     /// with too little gas for that reverts (`CatchUpOutOfGas`) instead of parking without moving it.
     uint256 public constant EXILE_CATCH_UP = 720;
-    /// @dev Burn sink. Ascend's launch tokens reject transfers to address(0) and to 0x…dEaD, so burns go
-    /// to this widely used dead address instead. Nobody holds its key.
-    address public constant DEAD = 0xdEAD000000000000000042069420694206942069;
-
     address public factory;
-    IAscendLaunchpad public launchpad;
+    /// @notice The launchpad's fee-source adapter: views and the calls this router sends as the creator.
+    IFeeSource public source;
+    /// @notice The contract that holds the creator role (Ascend's launchpad, a Boxa, Kleos or Eleos hook). The only
+    /// address this router sends launchpad calls to.
+    address public hook;
     IListingDesk public desk;
-    ICLPoolManager public poolManager;
     IExile public exile;
     ISandfall public sandfall;
     bytes32 public poolId;
     IERC20 public token;
+    /// @notice The quote asset, address(0) for native HYPE.
     IERC20 public quote;
     bool public tokenIs0;
+    /// @notice Where buybacks and token-side burns go: the address the token itself counts as burned.
+    address public burnSink;
     uint256 public exilePoolId;
     uint256 public treasuryStreamId;
 
@@ -151,6 +156,15 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     error NoPendingUpgrade();
     error SuccessorChanged();
     error CatchUpOutOfGas();
+    error BadCallTarget();
+    error NativeNotAccepted();
+
+    struct Market {
+        uint256 ema; // sqrt prices, Q64.96
+        uint256 spot;
+        uint256 liq;
+        uint256 cost; // bps a buy pays in fees and tax
+    }
 
     constructor() {
         _initialized = true; // the implementation itself can never be initialized
@@ -174,15 +188,16 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         _validate(p.config);
         if (p.steward == address(0)) revert ZeroAddress();
         factory = msg.sender;
-        launchpad = IAscendLaunchpad(p.launchpad);
+        source = IFeeSource(p.source);
+        hook = p.hook;
         desk = IListingDesk(p.desk);
-        poolManager = ICLPoolManager(p.poolManager);
         exile = IExile(p.exile);
         sandfall = ISandfall(p.sandfall);
         poolId = p.poolId;
         token = IERC20(p.token);
         quote = IERC20(p.quote);
         tokenIs0 = p.tokenIs0;
+        burnSink = p.burnSink;
         exilePoolId = p.exilePoolId;
         treasuryStreamId = p.treasuryStreamId;
         steward = p.steward;
@@ -190,31 +205,47 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit Initialized(p.poolId, p.token, p.quote, p.steward, p.config);
     }
 
-    /// @notice Second half of Ascend's two-step creator handover. The current creator must have called
-    /// `transferCreator(poolId, thisLodestar)` on Ascend first; that call is the consent, so anyone may
-    /// finish the hand-off. The factory calls this at deploy, and it works again later if the role ever
-    /// left (an expired lock, a hand-out the steward reverses), so a token can come back to Monarchy.
-    /// A creator handing the role back should claim their own fees first: whatever is still owed when the
-    /// hand-off completes is paid to the new creator, this router, and routed. Accepting also clears the
+    /// @notice Second half of a two-step creator handover (Ascend, Boxa). The current creator must have proposed
+    /// this Lodestar on the launchpad first; that call is the consent, so anyone may finish the hand-off. The
+    /// factory calls this at deploy, and it works again later if the role ever left (an expired lock, a hand-out
+    /// the steward reverses), so a token can come back to Monarchy. On one-step launchpads (Kleos, Eleos) the role
+    /// simply arrives and there is nothing to accept.
+    /// A creator handing the role back should claim their own fees first: on Ascend whatever is still owed when
+    /// the hand-off completes is paid to the new creator, this router, and routed. Accepting also clears the
     /// listing election on Ascend, so the steward enrols again afterwards if wanted.
     function acceptCreator() external {
-        if (launchpad.pendingCreator(poolId) != address(this)) revert CreatorNotPending();
-        launchpad.acceptCreator(poolId);
+        if (source.pendingCreator(address(token), poolId) != address(this)) revert CreatorNotPending();
+        _run(source.acceptCalls(address(token), poolId, address(this)), true);
         emit CreatorAccepted();
+    }
+
+    /// @notice Fees on Boxa, Kleos and Eleos arrive in native HYPE. Plain accept, no logic, so a payout landing in
+    /// the middle of `distribute` can't re-enter anything. Routers quoted in an ERC-20 refuse HYPE, which they
+    /// could never route.
+    receive() external payable {
+        if (address(quote) != address(0)) revert NativeNotAccepted();
     }
 
     // ================================================================ routing (anyone)
 
-    /// @notice Collect and claim this token's creator fees from Ascend and route everything this
-    /// router holds. Permissionless. The buyback's minimum output comes from Ascend's EMA price (or
-    /// spot, whichever asks for more), each buy is capped at a small share of the pool's depth, and
-    /// buys are at least 30 minutes apart, so sandwiching them doesn't pay. Any step that fails keeps its
-    /// amount here and retries next time; the other steps still run.
+    /// @notice Collect and claim this token's creator fees from the launchpad and route everything this
+    /// router holds. Permissionless. The buyback's minimum output comes from an EMA price (or spot,
+    /// whichever asks for more), each buy is capped at a small share of the pool's depth, and buys are at
+    /// least 30 minutes apart, so sandwiching them doesn't pay. Any step that fails keeps its amount here
+    /// and retries next time; the other steps still run.
     function distribute() external nonReentrant {
+        address t_ = address(token);
+        try source.poke(t_, poolId) {} catch {}
         // low-level calls, so even a changed return shape can't block routing
-        (bool ok,) = address(launchpad).call(abi.encodeCall(IAscendLaunchpad.collect, (poolId)));
+        bool ok;
+        try source.collectCalls(t_, poolId, address(this)) returns (IFeeSource.Call[] memory cs) {
+            ok = _run(cs, false);
+        } catch {}
         if (!ok) emit CollectFailed(); // Ascend's keeper may have collected already
-        (ok,) = address(launchpad).call(abi.encodeCall(IAscendLaunchpad.claim, (poolId)));
+        ok = false;
+        try source.claimCalls(t_, poolId, address(this)) returns (IFeeSource.Call[] memory cs) {
+            ok = _run(cs, false);
+        } catch {}
         if (!ok) emit ClaimFailed();
 
         Config memory c = _cfg;
@@ -238,7 +269,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
                     }
                 }
                 if (tHolders == 0) emit TokenHoldersPayoutFailed(t);
-            } else if (_tryTransfer(token, DEAD, t)) {
+            } else if (_tryTransfer(token, burnSink, t)) {
                 tBurned = t;
                 totalTokenBurned += t;
             } else {
@@ -247,7 +278,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         }
 
         // quote side: balance based, so fees claimed by anyone else and listing refunds are routed too
-        uint256 q = quote.balanceOf(address(this)) - buybackReserve - holdersReserve - treasuryReserve;
+        uint256 q = _quoteBalance() - buybackReserve - holdersReserve - treasuryReserve;
         uint256 burnQ = q * c.burnBps / BPS;
         uint256 holdQ = q * c.holdersBps / BPS;
         uint256 rest = q - burnQ - holdQ;
@@ -262,14 +293,15 @@ contract Lodestar is ILodestar, ReentrancyGuard {
 
         (uint256 spent, uint256 bought) = _buyback(c, burnQ + buybackReserve);
 
+        bool native = address(quote) == address(0);
         if (holdQ > 0) {
             bool paid;
             if (exileCurrent) {
-                quote.forceApprove(address(exile), holdQ);
-                try exile.notifyReward(exilePoolId, holdQ) {
+                if (!native) quote.forceApprove(address(exile), holdQ);
+                try exile.notifyReward{value: native ? holdQ : 0}(exilePoolId, holdQ) {
                     paid = true;
                 } catch {
-                    quote.forceApprove(address(exile), 0);
+                    if (!native) quote.forceApprove(address(exile), 0);
                 }
             }
             if (paid) {
@@ -284,11 +316,11 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         if (treasQ > 0) {
             bool paid;
             if (treasQ <= type(uint128).max) {
-                quote.forceApprove(address(sandfall), treasQ);
-                try sandfall.topUp(treasuryStreamId, uint128(treasQ)) {
+                if (!native) quote.forceApprove(address(sandfall), treasQ);
+                try sandfall.topUp{value: native ? treasQ : 0}(treasuryStreamId, uint128(treasQ)) {
                     paid = true;
                 } catch {
-                    quote.forceApprove(address(sandfall), 0);
+                    if (!native) quote.forceApprove(address(sandfall), 0);
                 }
             }
             if (paid) {
@@ -307,18 +339,18 @@ contract Lodestar is ILodestar, ReentrancyGuard {
 
     function _buyback(Config memory c, uint256 buyAmt) internal returns (uint256 spent, uint256 bought) {
         if (buyAmt > 0 && c.swapper != address(0) && block.timestamp >= lastBuybackAt + BUYBACK_INTERVAL) {
-            uint256 ema = _ema();
-            uint256 spot = _spot();
-            uint256 cap = _maxBuyback(ema, spot);
-            if (cap == 0) {
-                // no EMA, or no active liquidity to size the buy against (a pool below Ascend's first band):
-                // nothing is tried, so the reserve waits and nothing counts towards halving
+            Market memory m = _market();
+            uint256 cap = _maxBuyback(m.ema, m.spot, m.liq);
+            if (cap == 0 || m.cost > MAX_SWAP_COST_BPS) {
+                // no EMA, no active liquidity to size the buy against (a pool below Ascend's first band), or a
+                // buy tax too high right now: nothing is tried, so the reserve waits and nothing counts towards
+                // halving
                 emit BuybackSkipped(0, 0);
             } else {
                 uint256 full = buyAmt > cap ? cap : buyAmt;
                 uint256 attempt = full >> buybackShift;
                 if (attempt == 0) attempt = full;
-                uint256 minOut = _minOut(ema, spot, attempt, c.maxSlippageBps);
+                uint256 minOut = _minOut(m.ema, m.spot, attempt, c.maxSlippageBps, m.cost);
                 bool ok;
                 if (minOut > 0) {
                     try this.buybackStep(c.swapper, attempt, minOut) returns (uint256 s_, uint256 b_) {
@@ -339,7 +371,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
                     if (
                         buybackShift < MAX_BUYBACK_SHIFT && attempt * 256 >= cap
                             && block.timestamp >= lastHalvingAt + BUYBACK_INTERVAL
-                            && _floor(ema, attempt, c.maxSlippageBps) < _floor(spot, attempt, 0)
+                            && _floor(m.ema, attempt, c.maxSlippageBps, m.cost)
+                                < _floor(m.spot, attempt, 0, m.cost)
                     ) {
                         ++buybackShift;
                         lastHalvingAt = uint64(block.timestamp);
@@ -359,29 +392,36 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         returns (uint256 spent, uint256 burned)
     {
         if (msg.sender != address(this)) revert OnlySelf();
-        uint256 quoteBefore = quote.balanceOf(address(this));
-        uint256 deadBefore = token.balanceOf(DEAD);
-        quote.forceApprove(swapper, amountIn);
-        IBuybackSwapper(swapper).buyExactIn(poolId, amountIn, minOut, DEAD);
-        quote.forceApprove(swapper, 0);
-        spent = quoteBefore - quote.balanceOf(address(this));
-        burned = token.balanceOf(DEAD) - deadBefore;
+        address sink = burnSink;
+        uint256 quoteBefore = _quoteBalance();
+        uint256 deadBefore = token.balanceOf(sink);
+        if (address(quote) == address(0)) {
+            INativeBuybackSwapper(swapper).buyExactIn{value: amountIn}(poolId, amountIn, minOut, sink);
+        } else {
+            quote.forceApprove(swapper, amountIn);
+            IBuybackSwapper(swapper).buyExactIn(poolId, amountIn, minOut, sink);
+            quote.forceApprove(swapper, 0);
+        }
+        spent = quoteBefore - _quoteBalance();
+        burned = token.balanceOf(sink) - deadBefore;
         if (burned < minOut || spent > amountIn) revert BuybackShort();
     }
 
-    /// @notice Minimum tokens to accept when buying with `quoteIn`: the stricter of the floors at Ascend's
-    /// EMA price and at the pool's spot price, minus the pool fee and the slippage allowance. Returns 0
+    /// @notice Minimum tokens to accept when buying with `quoteIn`: the stricter of the floors at the EMA
+    /// price and at the pool's spot price, minus the pool's fee or tax and the slippage allowance. Returns 0
     /// (no buyback) when there is no EMA: spot alone is never trusted, since a sandwich can move it in
     /// the same transaction. Spot can only tighten the floor, so a dump (which leaves the EMA stale and
     /// high) can't loosen it either.
     function quoteMinOut(uint256 quoteIn, uint256 slippageBps) public view returns (uint256) {
-        return _minOut(_ema(), _spot(), quoteIn, slippageBps);
+        Market memory m = _market();
+        return _minOut(m.ema, m.spot, quoteIn, slippageBps, m.cost);
     }
 
     /// @notice Largest single buyback right now. 0 means none can go through now: there is no EMA, or the pool
     /// has no active liquidity to size it against (or doesn't report it).
     function maxBuyback() external view returns (uint256) {
-        return _maxBuyback(_ema(), _spot());
+        Market memory m = _market();
+        return _maxBuyback(m.ema, m.spot, m.liq);
     }
 
     /// @notice Earliest time the next buyback can go through (0 = nothing bought yet, no wait).
@@ -389,15 +429,15 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         return lastBuybackAt == 0 ? 0 : lastBuybackAt + BUYBACK_INTERVAL;
     }
 
-    function _ema() internal view returns (uint256 sp) {
-        try launchpad.emaSqrtPrice(poolId) returns (uint160 e) {
-            sp = e;
+    /// @dev The EMA and spot sqrt prices, the active liquidity and the swap cost, all from the adapter. A read
+    /// that fails leaves zeros, which `_buyback` treats as "wait"; a cost it can't read counts as too high.
+    function _market() internal view returns (Market memory m) {
+        try source.prices(address(token), poolId) returns (uint160 s, uint160 e, uint128 l_) {
+            (m.spot, m.ema, m.liq) = (s, e, l_);
         } catch {}
-    }
-
-    function _spot() internal view returns (uint256 sp) {
-        try poolManager.getSlot0(poolId) returns (uint160 s, int24, uint24, uint24) {
-            sp = s;
+        m.cost = type(uint256).max;
+        try source.swapCostBps(address(token), poolId) returns (uint256 c_) {
+            m.cost = c_;
         } catch {}
     }
 
@@ -405,15 +445,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// at whichever of the EMA and spot prices gives the smaller depth: a pump raises spot and the EMA
     /// stays in charge, a dump lowers spot and the cap shrinks with it instead of trusting a stale EMA.
     /// 0 when there is nothing to size against, which `_buyback` treats as "wait", never as "no cap".
-    function _maxBuyback(uint256 ema, uint256 spot) internal view returns (uint256) {
-        if (ema == 0) return 0;
-        uint256 liq;
-        try poolManager.getLiquidity(poolId) returns (uint128 l_) {
-            liq = l_;
-        } catch {
-            return 0;
-        }
-        if (liq == 0) return 0;
+    function _maxBuyback(uint256 ema, uint256 spot, uint256 liq) internal view returns (uint256) {
+        if (ema == 0 || liq == 0) return 0;
         uint256 sp = ema;
         if (spot != 0) sp = tokenIs0 ? Math.min(ema, spot) : Math.max(ema, spot);
         uint256 depth = tokenIs0 ? Math.mulDiv(liq, sp, 1 << 96) : Math.mulDiv(liq, 1 << 96, sp);
@@ -421,22 +454,27 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         return cap == 0 ? 1 : cap;
     }
 
-    function _minOut(uint256 ema, uint256 spot, uint256 quoteIn, uint256 slippageBps)
+    function _minOut(uint256 ema, uint256 spot, uint256 quoteIn, uint256 slippageBps, uint256 cost)
         internal
         view
         returns (uint256)
     {
-        if (ema == 0) return 0;
-        return Math.max(_floor(ema, quoteIn, slippageBps), _floor(spot, quoteIn, slippageBps));
+        if (ema == 0 || cost + slippageBps >= BPS) return 0;
+        return Math.max(_floor(ema, quoteIn, slippageBps, cost), _floor(spot, quoteIn, slippageBps, cost));
     }
 
-    function _floor(uint256 sp, uint256 quoteIn, uint256 slippageBps) internal view returns (uint256) {
-        if (sp == 0) return 0;
+    /// @dev Tokens `quoteIn` buys at sqrt price `sp`, less the swap's fee or tax (`cost`) and the slippage allowance.
+    function _floor(uint256 sp, uint256 quoteIn, uint256 slippageBps, uint256 cost)
+        internal
+        view
+        returns (uint256)
+    {
+        if (sp == 0 || cost + slippageBps >= BPS) return 0;
         // price = (sp / 2^96)^2 = currency1 per currency0
         uint256 expected = tokenIs0
             ? Math.mulDiv(Math.mulDiv(quoteIn, 1 << 96, sp), 1 << 96, sp)
             : Math.mulDiv(Math.mulDiv(quoteIn, sp, 1 << 96), sp, 1 << 96);
-        return expected * (BPS - SWAP_FEE_BPS - slippageBps) / BPS;
+        return expected * (BPS - cost - slippageBps) / BPS;
     }
 
     function executeConfig() external {
@@ -469,18 +507,19 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// Can only be extended, and not while a hand-off is pending (it could be accepted after locking).
     function lockCreatorRole(uint64 until) external onlyStewardOrFactory {
         if (until <= creatorLockedUntil || until <= block.timestamp) revert NotExtending();
-        if (launchpad.pendingCreator(poolId) != address(0)) revert CreatorTransferPending();
+        if (source.pendingCreator(address(token), poolId) != address(0)) revert CreatorTransferPending();
         creatorLockedUntil = until;
         emit CreatorRoleLocked(until);
     }
 
-    /// @notice Start handing the Ascend creator role to `next`. Blocked while locked; `next = 0` cancels a
-    /// pending hand-off and is always allowed.
+    /// @notice Hand the creator role to `next`: proposed on two-step launchpads (Ascend, Boxa), where `next`
+    /// accepts, and moved at once on one-step launchpads (Kleos, Eleos). Blocked while locked; `next = 0`
+    /// cancels a pending hand-off and is always allowed.
     function transferCreatorOut(address next) external onlySteward {
         if (next != address(0) && block.timestamp < creatorLockedUntil) revert CreatorRoleIsLocked();
         // a hand-off to itself would let anyone "accept" and clear the listing election for nothing
         if (next == address(this)) revert SelfTransfer();
-        launchpad.transferCreator(poolId, next);
+        _run(source.transferOutCalls(address(token), poolId, next), true);
         emit CreatorTransferOutStarted(next);
     }
 
@@ -506,17 +545,21 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit UpgradeCancelled();
     }
 
-    /// @notice Start Ascend's hand-off of the creator role to the proposed router, lock or no lock. The new
-    /// router completes it on its side. Until it does, the steward can still cancel with
-    /// `transferCreatorOut(0)`, and the role stays here.
+    /// @notice Hand the creator role to the proposed router, lock or no lock. On two-step launchpads the new
+    /// router completes it on its side, and until it does the steward can still cancel with
+    /// `transferCreatorOut(0)`, so the role stays here. On one-step launchpads the role moves at once, so the new
+    /// router must already be deployed (the steward deploys it on the successor factory during the notice).
     function executeUpgrade() external {
         if (upgradeEta == 0) revert NoPendingUpgrade();
         if (block.timestamp < upgradeEta) revert TimelockActive();
         if (block.timestamp > upgradeEta + EXECUTION_WINDOW) revert ProposalExpired();
         if (ILodestarFactory(factory).successor() != upgradeFactory) revert SuccessorChanged();
         address target = upgradeTarget;
+        if (source.handover() == IFeeSource.Handover.OneStep && target.code.length == 0) {
+            revert NoSuccessor();
+        }
         _clearUpgrade();
-        launchpad.transferCreator(poolId, target);
+        _run(source.transferOutCalls(address(token), poolId, target), true);
         emit UpgradeExecuted(target);
     }
 
@@ -559,31 +602,33 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         return (_pendingCfg, pendingEta);
     }
 
-    /// @notice What a distribute would route from fees already claimable on Ascend plus this router's balance.
-    /// Fees still sitting in the pool (not yet collected) are not included. `tokenSide` is burned, or paid to
-    /// Exile lockers when `config().tokenToHolders` is set.
+    /// @notice What a distribute would route from fees already claimable on the launchpad plus this router's
+    /// balance. Fees still sitting in the pool (not yet collected) are not included. `tokenSide` is burned, or
+    /// paid to Exile lockers when `config().tokenToHolders` is set.
     function previewDistribute()
         external
         view
         returns (uint256 tokenSide, uint256 quoteTotal, uint256 burnQ, uint256 holdQ, uint256 treasQ)
     {
-        tokenSide = token.balanceOf(address(this)) + launchpad.creatorOwedToken(poolId);
-        quoteTotal = quote.balanceOf(address(this)) - buybackReserve - holdersReserve - treasuryReserve
-            + launchpad.creatorOwedQuote(poolId);
+        (uint256 owedT, uint256 owedQ) = source.owed(address(token), poolId, address(this));
+        tokenSide = token.balanceOf(address(this)) + owedT;
+        quoteTotal = _quoteBalance() - buybackReserve - holdersReserve - treasuryReserve + owedQ;
         burnQ = quoteTotal * _cfg.burnBps / BPS;
         holdQ = quoteTotal * _cfg.holdersBps / BPS;
         treasQ = quoteTotal - burnQ - holdQ;
     }
 
     function isCreator() external view returns (bool) {
-        return launchpad.poolCreator(poolId) == address(this);
+        return source.creator(address(token), poolId) == address(this);
     }
 
     // ================================================================ internals
 
     function _validate(Config memory c) internal pure {
         if (uint256(c.burnBps) + c.holdersBps + c.treasuryBps != BPS) revert InvalidConfig();
-        if (c.maxSlippageBps < MIN_SLIPPAGE_BPS || c.maxSlippageBps > MAX_SLIPPAGE_BPS) revert InvalidConfig();
+        if (c.maxSlippageBps < MIN_SLIPPAGE_BPS || c.maxSlippageBps > MAX_SLIPPAGE_BPS) {
+            revert InvalidConfig();
+        }
     }
 
     function _clearUpgrade() internal {
@@ -606,6 +651,32 @@ contract Lodestar is ILodestar, ReentrancyGuard {
             // reason uses little gas and still only parks the payouts.
             if (gasleft() <= g / 63) revert CatchUpOutOfGas();
         }
+    }
+
+    /// @dev Send an adapter's call plan as this router. Only to `hook`, never with value. `strict` bubbles the
+    /// first failure (steward and factory actions); otherwise a failure stops the plan and returns false, so
+    /// `distribute` keeps routing.
+    function _run(IFeeSource.Call[] memory cs, bool strict) internal returns (bool) {
+        for (uint256 i; i < cs.length; ++i) {
+            if (cs[i].target != hook) {
+                if (strict) revert BadCallTarget();
+                return false;
+            }
+            (bool ok, bytes memory ret) = hook.call(cs[i].data);
+            if (!ok) {
+                if (strict) {
+                    assembly ("memory-safe") {
+                        revert(add(ret, 32), mload(ret))
+                    }
+                }
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function _quoteBalance() internal view returns (uint256) {
+        return address(quote) == address(0) ? address(this).balance : quote.balanceOf(address(this));
     }
 
     function _tryTransfer(IERC20 asset, address to, uint256 amount) internal returns (bool) {

@@ -2,27 +2,28 @@
 pragma solidity ^0.8.24;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {IAscendLaunchpad} from "./interfaces/IAscendLaunchpad.sol";
-import {IListingDesk} from "./interfaces/IListingDesk.sol";
-import {ICLPoolManager} from "./interfaces/IInfinity.sol";
+import {IFeeSource} from "./interfaces/IFeeSource.sol";
 import {IExile} from "./interfaces/IExile.sol";
 import {ISandfall} from "./interfaces/ISandfall.sol";
 import {ILodestar} from "./interfaces/ILodestar.sol";
-import {AscendPoolKey} from "./libraries/AscendPoolKey.sol";
 
 /// @title LodestarFactory
-/// @notice Deploys one Lodestar router per Ascend pool at an address anyone can predict from the
-/// token and quote. Activation flow for a dev who launched on Ascend's site:
+/// @notice Deploys one Lodestar router per launchpad pool at an address anyone can predict from the token
+/// and quote. One factory per launchpad: everything launchpad specific comes from its fee-source adapter.
+/// Activation on a two-step launchpad (Ascend, Boxa):
 ///   1. `predict(token, quote)` to get the router address.
-///   2. On Ascend: `transferCreator(poolId, router)`.
+///   2. On the launchpad: propose the router as the new creator.
 ///   3. Here: `deploy(params)`. In one transaction this creates the router, its Exile holder-rewards
 ///      pool and its Sandfall Team Treasury stream, accepts the creator role, optionally enrols the
 ///      listing set-aside and, if the dev chose so, locks the creator role to the router forever.
+/// On a one-step launchpad (Kleos, Eleos) the order flips, because the role moves in one call and nothing
+/// on chain would prove who sent it: `deploy(params)` first, then `transferCreator(token, router)` on the
+/// launchpad. The router earns from the moment the role arrives.
 /// The dev keeps the dev-buy tokens; only the creator fee stream moves to the router.
 contract LodestarFactory {
     struct DeployParams {
         address token;
-        address quote;
+        address quote; // address(0) = native HYPE
         ILodestar.Config cfg;
         address treasuryRecipient;
         uint32 treasuryWindow;
@@ -34,9 +35,8 @@ contract LodestarFactory {
     }
 
     address public immutable implementation;
-    IAscendLaunchpad public immutable launchpad;
-    IListingDesk public immutable desk;
-    ICLPoolManager public immutable poolManager;
+    /// @notice The launchpad's fee-source adapter, handed to every router made here.
+    IFeeSource public immutable source;
     IExile public immutable exile;
     ISandfall public immutable sandfall;
 
@@ -70,7 +70,6 @@ contract LodestarFactory {
     event OwnerTransferStarted(address indexed next);
     event OwnerTransferred(address indexed previous, address indexed next);
 
-    error DeskMismatch();
     error NotPoolCreator();
     error TransferCreatorFirst();
     error OnlyOwner();
@@ -79,23 +78,32 @@ contract LodestarFactory {
     error DefaultSwapperJustChanged();
     error AlreadyDeployed();
     error NotPendingOwner();
+    /// @dev The coin pays holders dividends inside the token and the adapter doesn't know how Exile can claim them.
+    error HoldersSplitActive();
+    error NoListingDesk();
+    error NotStranded();
+
+    /// @dev Where a deploy lands, resolved before `_deploy`.
+    struct Target {
+        bytes32 poolId;
+        address hook;
+        bool tokenIs0;
+        address lodestar;
+        address steward;
+        bool twoStep;
+    }
 
     constructor(
         address implementation_,
-        IAscendLaunchpad launchpad_,
-        IListingDesk desk_,
-        ICLPoolManager poolManager_,
+        IFeeSource source_,
         IExile exile_,
         ISandfall sandfall_,
         address defaultSwapper_,
         address owner_
     ) {
-        if (launchpad_.listingDesk() != address(desk_)) revert DeskMismatch();
         if (owner_ == address(0)) revert ZeroAddress();
         implementation = implementation_;
-        launchpad = launchpad_;
-        desk = desk_;
-        poolManager = poolManager_;
+        source = source_;
         exile = exile_;
         sandfall = sandfall_;
         owner = owner_;
@@ -104,62 +112,123 @@ contract LodestarFactory {
         emit DefaultSwapperSet(defaultSwapper_);
     }
 
-    /// @notice The router address and Ascend pool id for a token, before or after deployment.
+    /// @notice The router address and pool id for a token, before or after deployment. Reverts for a pair the
+    /// launchpad's adapter doesn't support.
     function predict(address token, address quote) public view returns (address lodestar, bytes32 poolId) {
-        poolId = AscendPoolKey.id(token, quote, address(launchpad), address(poolManager));
+        (poolId,,) = source.resolve(token, quote);
         lodestar = Clones.predictDeterministicAddress(implementation, poolId, address(this));
     }
 
-    /// @notice Activate a Lodestar. Caller must be the pool's current Ascend creator and must already
-    /// have called `transferCreator(poolId, predicted)` on Ascend. Send about 6M gas when
-    /// `enrolListing` is set (Ascend's desk checks a gas floor).
+    /// @notice Activate a Lodestar. The caller must be the pool's current creator on the launchpad. On a
+    /// two-step launchpad they must already have proposed the predicted router as creator; on a one-step one
+    /// they hand the role over after this call. Send about 6M gas when `enrolListing` is set (Ascend's desk
+    /// checks a gas floor).
+    /// The steward of the router that holds the role may also call it to deploy that router's upgrade target
+    /// here (see `Lodestar.proposeUpgrade`): during the 7 day notice on one-step launchpads, after
+    /// `executeUpgrade` on two-step ones.
     function deploy(DeployParams calldata p) external returns (address lodestar) {
-        bytes32 poolId;
-        (lodestar, poolId) = predict(p.token, p.quote);
-        if (launchpad.poolCreator(poolId) != msg.sender) revert NotPoolCreator();
-        if (launchpad.pendingCreator(poolId) != lodestar) revert TransferCreatorFirst();
+        Target memory t = _target(p, msg.sender);
+        lodestar = t.lodestar;
+        address creator = source.creator(p.token, t.poolId);
+        if (creator != msg.sender && !_upgradeFrom(p.token, t, creator)) revert NotPoolCreator();
+        if (t.twoStep && source.pendingCreator(p.token, t.poolId) != lodestar) revert TransferCreatorFirst();
+        _deploy(p, t);
+    }
+
+    /// @notice For a one-step launchpad where the creator handed the role to the predicted router before deploying
+    /// it: the role now sits at an address with no code and nothing on chain says who sent it, so `deploy` can't
+    /// tell the creator from anyone else. The owner deploys it with the settings the creator asks for, after
+    /// checking off chain who handed the role over.
+    function rescueDeploy(DeployParams calldata p, address steward) external returns (address lodestar) {
+        if (msg.sender != owner) revert OnlyOwner();
+        if (steward == address(0)) revert ZeroAddress();
+        Target memory t = _target(p, steward);
+        lodestar = t.lodestar;
+        if (t.twoStep || source.creator(p.token, t.poolId) != lodestar) revert NotStranded();
+        _deploy(p, t);
+    }
+
+    function _target(DeployParams calldata p, address steward) internal view returns (Target memory t) {
+        (t.poolId, t.hook, t.tokenIs0) = source.resolve(p.token, p.quote);
+        t.lodestar = Clones.predictDeterministicAddress(implementation, t.poolId, address(this));
+        t.steward = steward;
+        t.twoStep = source.handover() == IFeeSource.Handover.TwoStep;
+    }
+
+    function _deploy(DeployParams calldata p, Target memory t) internal {
+        address lodestar = t.lodestar;
+        bytes32 poolId = t.poolId;
         if (p.treasuryRecipient == address(0)) revert ZeroAddress();
         // the pool id sorts the pair, so check token and quote weren't passed the wrong way round
-        if (launchpad.poolTokenIs0(poolId) != (p.token < p.quote)) revert WrongTokenOrder();
+        if (t.tokenIs0 != (p.token < p.quote)) revert WrongTokenOrder();
         // a second deploy would collide on CREATE2, which burns all the gas sent; fail cheaply instead.
-        // To take the role back after it left, hand it to the existing router and call its acceptCreator.
+        // To take the role back after it left, hand it to the existing router (and call its acceptCreator).
         if (lodestar.code.length != 0) revert AlreadyDeployed();
+        address desk = source.desk();
+        if (p.enrolListing && desk == address(0)) revert NoListingDesk();
+        // a coin that pays its holders dividends by balance pays them to Exile for every locked coin; Exile can
+        // only pass them on to lockers if it knows the claim. It is set whenever the adapter knows one, since
+        // anyone can top up a coin's dividends whatever its split says.
+        (address claimTarget, bytes4 claimSelector) = source.dividendClaim(p.token);
+        if (claimSelector == bytes4(0) && source.holdersShareBps(p.token, poolId) > 0) {
+            revert HoldersSplitActive();
+        }
 
         Clones.cloneDeterministic(implementation, poolId);
         // the router administers the reward pool, so tier changes stay with whoever is steward
-        uint256 exilePoolId = exile.createPool(p.token, p.quote, p.tiers, lodestar);
-        uint256 streamId = sandfall.createRolling(p.quote, p.treasuryRecipient, p.treasuryWindow, lodestar, false);
-
-        ILodestar.Config memory cfg = p.cfg;
-        if (cfg.swapper == address(0)) {
-            if (block.timestamp < defaultSwapperSetAt + DEFAULT_SWAPPER_DELAY) revert DefaultSwapperJustChanged();
-            cfg.swapper = defaultSwapper;
+        ILodestar.InitParams memory ip;
+        ip.exilePoolId = exile.createPool(p.token, p.quote, p.tiers, lodestar);
+        ip.treasuryStreamId =
+            sandfall.createRolling(p.quote, p.treasuryRecipient, p.treasuryWindow, lodestar, false);
+        if (claimSelector != bytes4(0)) {
+            exile.setHarvest(p.token, ip.exilePoolId, claimTarget, claimSelector);
         }
 
-        ILodestar(lodestar).initialize(
-            ILodestar.InitParams({
-                launchpad: address(launchpad),
-                desk: address(desk),
-                poolManager: address(poolManager),
-                exile: address(exile),
-                sandfall: address(sandfall),
-                poolId: poolId,
-                token: p.token,
-                quote: p.quote,
-                tokenIs0: launchpad.poolTokenIs0(poolId),
-                exilePoolId: exilePoolId,
-                treasuryStreamId: streamId,
-                steward: msg.sender,
-                config: cfg
-            })
-        );
-        ILodestar(lodestar).acceptCreator();
+        ip.config = p.cfg;
+        if (ip.config.swapper == address(0)) {
+            if (block.timestamp < defaultSwapperSetAt + DEFAULT_SWAPPER_DELAY) {
+                revert DefaultSwapperJustChanged();
+            }
+            ip.config.swapper = defaultSwapper;
+        }
+        ip.source = address(source);
+        ip.hook = t.hook;
+        ip.desk = desk;
+        ip.exile = address(exile);
+        ip.sandfall = address(sandfall);
+        ip.poolId = poolId;
+        ip.token = p.token;
+        ip.quote = p.quote;
+        ip.tokenIs0 = t.tokenIs0;
+        ip.burnSink = source.burnSink(p.token);
+        ip.steward = t.steward;
+        ILodestar(lodestar).initialize(ip);
+        if (t.twoStep) ILodestar(lodestar).acceptCreator();
         if (p.enrolListing) ILodestar(lodestar).enrollListing(p.listingCap);
         if (p.creatorLockUntil > 0) ILodestar(lodestar).lockCreatorRole(p.creatorLockUntil);
 
         lodestarOf[p.token] = lodestar;
         allLodestars.push(lodestar);
-        emit LodestarDeployed(p.token, poolId, lodestar, msg.sender, exilePoolId, streamId);
+        emit LodestarDeployed(p.token, poolId, lodestar, t.steward, ip.exilePoolId, ip.treasuryStreamId);
+    }
+
+    /// @dev True when `creator` is a router whose steward is the caller and whose upgrade points at `lodestar`:
+    /// still pending on a one-step launchpad (the role moves only once the new router exists), already executed
+    /// on a two-step one (the launchpad then shows `lodestar` as pending creator).
+    function _upgradeFrom(address token, Target memory t, address creator) internal view returns (bool) {
+        address lodestar = t.lodestar;
+        if (creator == lodestar || creator.code.length == 0) return false;
+        try ILodestar(creator).steward() returns (address s) {
+            if (s != msg.sender) return false;
+        } catch {
+            return false;
+        }
+        if (t.twoStep) return source.pendingCreator(token, t.poolId) == lodestar;
+        try ILodestar(creator).upgradeTarget() returns (address target) {
+            return target == lodestar;
+        } catch {
+            return false;
+        }
     }
 
     function allLodestarsLength() external view returns (uint256) {

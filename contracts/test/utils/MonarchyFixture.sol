@@ -18,6 +18,8 @@ import {MockERC20} from "../../src/mocks/MockERC20.sol";
 import {MockAscendPool} from "../../src/mocks/MockAscendPool.sol";
 import {MockAscendLaunchpad} from "../../src/mocks/MockAscendLaunchpad.sol";
 import {MockListingDesk} from "../../src/mocks/MockListingDesk.sol";
+import {AscendFeeSource} from "../../src/sources/AscendFeeSource.sol";
+import {IFeeSource} from "../../src/interfaces/IFeeSource.sol";
 
 /// @notice Full mock Ascend plus Monarchy core, shared by the Lodestar, swapper and integration tests.
 abstract contract MonarchyFixture is Test {
@@ -35,6 +37,7 @@ abstract contract MonarchyFixture is Test {
     Lodestar internal impl;
     LodestarFactory internal factory;
     AscendSwapper internal swapper;
+    AscendFeeSource internal ascendSource;
 
     address internal dev = makeAddr("dev");
     address internal treasury = makeAddr("treasury");
@@ -54,12 +57,15 @@ abstract contract MonarchyFixture is Test {
         exile = new Exile();
         sandfall = new Sandfall();
         impl = new Lodestar();
-        swapper = new AscendSwapper(IVault(address(pool)), ICLPoolManager(address(pool)), IAscendLaunchpad(address(launchpad)));
+        swapper = new AscendSwapper(
+            IVault(address(pool)), ICLPoolManager(address(pool)), IAscendLaunchpad(address(launchpad))
+        );
+        ascendSource = new AscendFeeSource(
+            IAscendLaunchpad(address(launchpad)), IListingDesk(address(desk)), ICLPoolManager(address(pool))
+        );
         factory = new LodestarFactory(
             address(impl),
-            IAscendLaunchpad(address(launchpad)),
-            IListingDesk(address(desk)),
-            ICLPoolManager(address(pool)),
+            IFeeSource(address(ascendSource)),
             exile,
             ISandfall(address(sandfall)),
             address(swapper),
@@ -99,7 +105,7 @@ abstract contract MonarchyFixture is Test {
         vm.prank(dev);
         launchpad.transferCreator(poolId, predicted);
         vm.prank(dev);
-        l = Lodestar(factory.deploy{gas: 5_000_000}(p));
+        l = Lodestar(payable(factory.deploy{gas: 5_000_000}(p)));
     }
 
     function _buy(bytes32 poolId, address who, uint256 quoteIn) internal returns (uint256 out) {

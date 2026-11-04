@@ -13,8 +13,11 @@ import {IListingDesk} from "../src/interfaces/IListingDesk.sol";
 import {ICLPoolManager, IVault} from "../src/interfaces/IInfinity.sol";
 import {IExile} from "../src/interfaces/IExile.sol";
 import {ISandfall} from "../src/interfaces/ISandfall.sol";
+import {IFeeSource} from "../src/interfaces/IFeeSource.sol";
+import {AscendFeeSource} from "../src/sources/AscendFeeSource.sol";
 
-/// @notice Deploys Exile, Sandfall, the Lodestar implementation, AscendSwapper and LodestarFactory.
+/// @notice Deploys Exile, Sandfall, the Lodestar implementation, AscendSwapper, the Ascend fee-source adapter and
+/// LodestarFactory.
 /// ASCEND_MODE=real (default) points at Ascend on Elysium testnet from env; ASCEND_MODE=mock points at
 /// the contracts DeployMocks wrote to deployments/<chainId>.json.
 contract DeployCore is BaseScript {
@@ -54,16 +57,20 @@ contract DeployCore is BaseScript {
         Lodestar impl = new Lodestar();
         AscendSwapper swapper =
             new AscendSwapper(IVault(d.vault), ICLPoolManager(d.poolManager), IAscendLaunchpad(d.launchpad));
+        AscendFeeSource ascend = new AscendFeeSource(
+            IAscendLaunchpad(d.launchpad), IListingDesk(d.desk), ICLPoolManager(d.poolManager)
+        );
         LodestarFactory factory = new LodestarFactory(
             address(impl),
-            IAscendLaunchpad(d.launchpad),
-            IListingDesk(d.desk),
-            ICLPoolManager(d.poolManager),
+            IFeeSource(address(ascend)),
             IExile(address(exile)),
             ISandfall(address(sandfall)),
             address(swapper),
             owner
         );
+        // Exile's owner only adds registrars for the harvest, which Ascend routers don't use; hand it to the same
+        // owner as the factory (the owner accepts with Exile.acceptOwner)
+        if (owner != vm.addr(_deployerKey())) exile.transferOwner(owner);
         vm.stopBroadcast();
 
         d.exile = address(exile);

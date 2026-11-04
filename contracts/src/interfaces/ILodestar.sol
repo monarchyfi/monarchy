@@ -9,20 +9,21 @@ interface ILodestar {
         uint16 holdersBps; // Exile holder rewards
         uint16 treasuryBps; // Team Treasury, streamed through Sandfall
         address swapper; // buyback route; 0 = keep the buyback share in reserve
-        uint16 maxSlippageBps; // vs the stricter of Ascend's on-chain EMA price and spot, on top of the 1% pool fee
+        uint16 maxSlippageBps; // vs the stricter of the EMA price and spot, on top of the pool's fee or tax
         bool tokenToHolders; // token-side fees: false = burn them all, true = all of them to Exile lockers
     }
 
     struct InitParams {
-        address launchpad;
-        address desk;
-        address poolManager;
+        address source; // the launchpad's IFeeSource adapter
+        address hook; // the contract that holds the creator role; the only address the router sends launchpad calls to
+        address desk; // the launchpad's listing desk, or address(0)
         address exile;
         address sandfall;
         bytes32 poolId;
         address token;
-        address quote;
+        address quote; // address(0) = native HYPE
         bool tokenIs0;
+        address burnSink;
         uint256 exilePoolId;
         uint256 treasuryStreamId;
         address steward;
@@ -34,4 +35,6 @@ interface ILodestar {
     function enrollListing(uint256 cap) external;
     function lockCreatorRole(uint64 until) external;
     function distribute() external;
+    function steward() external view returns (address);
+    function upgradeTarget() external view returns (address);
 }

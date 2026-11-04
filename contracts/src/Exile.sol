@@ -26,6 +26,17 @@ import {IExile} from "./interfaces/IExile.sol";
 /// right before a payout only catches a sliver of it. A lock stops earning exactly at its unlock
 /// time: unlock times are rounded up to the hour, points expiring in each hour are tracked in a
 /// bucket, and the pool removes them as it passes each hour boundary.
+///
+/// A pool's reward token can be native HYPE (address(0)), which is how fees arrive on Boxa, Kleos and Eleos.
+///
+/// Harvest: coins on those launchpads can pay their holders HYPE dividends by balance, and Exile's balance earns
+/// them for every locked coin. For a token whose harvest is set, anyone can call `harvest(token)`: Exile claims
+/// those dividends for itself and pays what arrives to the token's harvest pool, where it drips to lockers like
+/// any other reward. HYPE a token pushes to Exile on its own (a permissionless `claimFor(exile)`) is counted per
+/// sender and joins that token's next harvest. Only registrars (Monarchy's factories, added by the owner behind a
+/// 12 hour timelock) name harvest pools, and the call has one of three fixed shapes, never with value:
+/// `claimFor(exile)` or `claimRewards(exile)` on the token itself (Eleos, Kleos), or
+/// `claimRewards(token, exile)` on the token's hook (Boxa). The owner can never move a locked token or a reward.
 contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     using SafeERC20 for IERC20;
 
@@ -116,6 +127,19 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     uint256 internal constant ACC_PREC = 1e18;
     uint256 internal constant REWARD = 0; // stream paid in the pool's reward token
     uint256 internal constant STAKE = 1; // stream paid in the stake token
+    /// @dev The dividend claims a harvest may call. On the stake token, as `selector(address(this))`: Eleos coins'
+    /// `claimFor(holder)` and Kleos coins' `claimRewards(holder)`. On another contract (the coin's hook), as
+    /// `selector(stakeToken, address(this))`: Boxa hooks' `claimRewards(token, recipient)`, which pays the caller's
+    /// dividends in that token to the recipient.
+    bytes4 internal constant CLAIM_FOR = bytes4(keccak256("claimFor(address)"));
+    bytes4 internal constant CLAIM_REWARDS_FOR = bytes4(keccak256("claimRewards(address)"));
+    bytes4 internal constant CLAIM_REWARDS_TO = bytes4(keccak256("claimRewards(address,address)"));
+
+    struct Harvest {
+        uint256 poolId;
+        address target; // the stake token, or the hook that pays its holders
+        bytes4 selector;
+    }
 
     uint256 public poolCount;
     mapping(uint256 => Pool) internal _pools;
@@ -126,6 +150,21 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     mapping(address => uint256[]) internal _lockIdsOf;
 
     bool internal _pulling;
+
+    /// @notice Adds registrars (behind a 12 hour timelock) and removes them; nothing else. A multisig on live chains.
+    address public owner;
+    address public pendingOwner;
+    /// @notice Contracts that may name a token's harvest pool: Monarchy's Lodestar factories.
+    mapping(address => bool) public isRegistrar;
+    /// @notice When a proposed registrar can be added (0 = none proposed).
+    mapping(address => uint64) public registrarEta;
+    /// @notice The native pool that receives the HYPE dividends locks of a token earn, and the token's claim.
+    mapping(address stakeToken => Harvest) public harvestOf;
+    /// @notice HYPE that reached Exile from an address outside a harvest call, waiting for that address's next
+    /// harvest (a token pushing a holder payout to Exile on its own).
+    mapping(address from => uint256) public unattributed;
+    /// @dev The token being harvested right now; HYPE arriving meanwhile is the harvest's own.
+    address internal transient _harvesting;
 
     event PoolCreated(uint256 indexed poolId, address indexed stakeToken, address rewardToken, address admin);
     event Locked(
@@ -151,6 +190,14 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     event TiersProposed(uint256 indexed poolId, uint64 eta);
     event TiersExecuted(uint256 indexed poolId);
     event TiersCancelled(uint256 indexed poolId);
+    event OwnerTransferStarted(address indexed next);
+    event OwnerTransferred(address indexed previous, address indexed next);
+    event RegistrarProposed(address indexed registrar, uint64 eta);
+    event RegistrarAdded(address indexed registrar);
+    event RegistrarRemoved(address indexed registrar);
+    event HarvestSet(address indexed stakeToken, uint256 indexed poolId, address target, bytes4 selector);
+    event Harvested(address indexed stakeToken, uint256 indexed poolId, uint256 amount, bool claimed);
+    event NativeReceived(address indexed from, uint256 amount);
 
     error UnknownPool();
     error UnknownLock();
@@ -170,6 +217,19 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     error UnexpectedNFT();
     error NotAnERC20();
     error ZeroAddress();
+    error WrongValue();
+    error PayoutFailed();
+    error OnlyOwner();
+    error NotPendingOwner();
+    error NotRegistrar();
+    error NoPendingRegistrar();
+    error InvalidHarvest();
+    error NoHarvest();
+
+    constructor() {
+        owner = msg.sender;
+        emit OwnerTransferred(address(0), msg.sender);
+    }
 
     // ================================================================ pools
 
@@ -178,7 +238,8 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         external
         returns (uint256 poolId)
     {
-        if (stakeToken == address(0) || rewardToken == address(0) || admin == address(0)) revert InvalidTiers();
+        // rewardToken == address(0) makes a native HYPE pool
+        if (stakeToken == address(0) || admin == address(0)) revert InvalidTiers();
         _validateTiers(tiers);
         poolId = ++poolCount;
         Pool storage p = _pools[poolId];
@@ -197,18 +258,121 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     }
 
     /// @inheritdoc IExile
-    function notifyReward(uint256 poolId, uint256 amount) external nonReentrant {
+    function notifyReward(uint256 poolId, uint256 amount) external payable nonReentrant {
         Pool storage p = _pool(poolId);
-        (uint256 received, uint256 rate, uint64 finish) = _notify(p, REWARD, p.rewardToken, amount);
+        uint256 received;
+        if (p.rewardToken == address(0)) {
+            if (msg.value != amount) revert WrongValue();
+            received = amount;
+        } else {
+            if (msg.value != 0) revert WrongValue();
+            received = _pullERC20(p.rewardToken, amount);
+        }
+        (uint256 rate, uint64 finish) = _notify(p, REWARD, received);
         emit RewardAdded(poolId, msg.sender, received, rate, finish);
     }
 
     /// @inheritdoc IExile
     function notifyStakeReward(uint256 poolId, uint256 amount) external nonReentrant {
         Pool storage p = _pool(poolId);
-        (uint256 received, uint256 rate, uint64 finish) = _notify(p, STAKE, p.stakeToken, amount);
+        uint256 received = _pullERC20(p.stakeToken, amount);
+        (uint256 rate, uint64 finish) = _notify(p, STAKE, received);
         emit StakeRewardAdded(poolId, msg.sender, received, rate, finish);
     }
+
+    // ================================================================ harvest
+
+    /// @inheritdoc IExile
+    function setHarvest(address stakeToken, uint256 poolId, address target, bytes4 selector) external {
+        if (!isRegistrar[msg.sender]) revert NotRegistrar();
+        Pool storage p = _pool(poolId);
+        if (p.stakeToken != stakeToken || p.rewardToken != address(0)) revert InvalidHarvest();
+        if (selector == CLAIM_FOR || selector == CLAIM_REWARDS_FOR) {
+            if (target != stakeToken) revert InvalidHarvest();
+        } else if (selector == CLAIM_REWARDS_TO) {
+            if (target == stakeToken || target.code.length == 0) revert InvalidHarvest();
+        } else {
+            revert InvalidHarvest();
+        }
+        harvestOf[stakeToken] = Harvest(poolId, target, selector);
+        emit HarvestSet(stakeToken, poolId, target, selector);
+    }
+
+    /// @inheritdoc IExile
+    /// @dev Anyone may call it; the keeper runs it with every distribute. A claim that reverts (nothing owed, a
+    /// paused token) still pays out whatever the token pushed to Exile on its own since the last harvest.
+    function harvest(address stakeToken) external nonReentrant returns (uint256 amount) {
+        Harvest memory h = harvestOf[stakeToken];
+        if (h.poolId == 0) revert NoHarvest();
+        uint256 before = address(this).balance;
+        _harvesting = stakeToken;
+        bytes memory data = h.target == stakeToken
+            ? abi.encodeWithSelector(h.selector, address(this))
+            : abi.encodeWithSelector(h.selector, stakeToken, address(this));
+        (bool claimed,) = h.target.call(data);
+        _harvesting = address(0);
+        // nothing in a claim can take HYPE out of Exile: every payout path is nonReentrant
+        amount = address(this).balance - before + unattributed[stakeToken];
+        if (amount == 0) return 0;
+        unattributed[stakeToken] = 0;
+        Pool storage p = _pools[h.poolId];
+        (uint256 rate, uint64 finish) = _notify(p, REWARD, amount);
+        emit RewardAdded(h.poolId, stakeToken, amount, rate, finish);
+        emit Harvested(stakeToken, h.poolId, amount, claimed);
+    }
+
+    /// @notice HYPE outside `notifyReward`: a harvest's own claim, or a token paying out to Exile on its own,
+    /// which is set aside for that token's next harvest. Anything else sent here stays here.
+    receive() external payable {
+        if (_harvesting != address(0)) return;
+        unattributed[msg.sender] += msg.value;
+        emit NativeReceived(msg.sender, msg.value);
+    }
+
+    // ================================================================ owner
+
+    /// @notice Propose a registrar. It can be added by anyone 12 hours later, within the 7 days after that.
+    function proposeRegistrar(address registrar) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        if (registrar == address(0)) revert ZeroAddress();
+        uint64 eta = uint64(block.timestamp) + TIMELOCK;
+        registrarEta[registrar] = eta;
+        emit RegistrarProposed(registrar, eta);
+    }
+
+    function addRegistrar(address registrar) external {
+        uint64 eta = registrarEta[registrar];
+        if (eta == 0) revert NoPendingRegistrar();
+        if (block.timestamp < eta) revert TimelockActive();
+        if (block.timestamp > eta + EXECUTION_WINDOW) revert ProposalExpired();
+        delete registrarEta[registrar];
+        isRegistrar[registrar] = true;
+        emit RegistrarAdded(registrar);
+    }
+
+    /// @notice Remove a registrar or drop a proposed one, at once. Harvest pools it already named stay.
+    function removeRegistrar(address registrar) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        delete registrarEta[registrar];
+        isRegistrar[registrar] = false;
+        emit RegistrarRemoved(registrar);
+    }
+
+    /// @notice Start handing the owner role to `next`, which takes it with `acceptOwner` (0 cancels).
+    function transferOwner(address next) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        pendingOwner = next;
+        emit OwnerTransferStarted(next);
+    }
+
+    function acceptOwner() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner();
+        emit OwnerTransferred(owner, msg.sender);
+        owner = msg.sender;
+        pendingOwner = address(0);
+    }
+
+    // ================================================================ pools (continued)
 
     /// @notice Process up to `maxBuckets` hour boundaries for a pool that has been idle a long time.
     function poke(uint256 poolId, uint256 maxBuckets) external returns (bool caughtUp) {
@@ -437,7 +601,9 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     function tierFor(uint256 poolId, uint256 duration) external view returns (uint16 multiplierBps, bytes32 label) {
         Tier[] storage tiers = _pool(poolId).tiers;
         for (uint256 i = tiers.length; i > 0; --i) {
-            if (tiers[i - 1].minDuration <= duration) return (tiers[i - 1].multiplierBps, tiers[i - 1].label);
+            if (tiers[i - 1].minDuration <= duration) {
+                return (tiers[i - 1].multiplierBps, tiers[i - 1].label);
+            }
         }
         return (0, bytes32(0));
     }
@@ -469,8 +635,8 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         return _lock(lockId);
     }
 
-    function lockIdsOf(address owner) external view returns (uint256[] memory) {
-        return _lockIdsOf[owner];
+    function lockIdsOf(address holder) external view returns (uint256[] memory) {
+        return _lockIdsOf[holder];
     }
 
     function poolsOf(address stakeToken) external view returns (uint256[] memory) {
@@ -520,19 +686,22 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         _lockIdsOf[msg.sender].push(lockId);
     }
 
-    function _notify(Pool storage p, uint256 i, address asset, uint256 amount)
-        internal
-        returns (uint256 received, uint256 rate, uint64 finish)
-    {
+    function _pullERC20(address asset, uint256 amount) internal returns (uint256 received) {
         if (amount == 0) revert InvalidAmount();
-        // Uncapped (buckets and snapshots) so a long-idle pool, or one crowded with dust locks expiring hour
-        // after hour, never blocks Lodestar's distribute; the caller pays the catch-up gas.
-        _updatePool(p, type(uint256).max, type(uint256).max, true);
-
         IERC20 rt = IERC20(asset);
         uint256 before = rt.balanceOf(address(this));
         rt.safeTransferFrom(msg.sender, address(this), amount);
         received = rt.balanceOf(address(this)) - before;
+    }
+
+    function _notify(Pool storage p, uint256 i, uint256 received)
+        internal
+        returns (uint256 rate, uint64 finish)
+    {
+        if (received == 0) revert InvalidAmount();
+        // Uncapped (buckets and snapshots) so a long-idle pool, or one crowded with dust locks expiring hour
+        // after hour, never blocks Lodestar's distribute; the caller pays the catch-up gas.
+        _updatePool(p, type(uint256).max, type(uint256).max, true);
 
         // The new end is weighted by amount: what is still dripping keeps its remaining time, while the
         // payout and anything that dripped with nobody locked get a full 3 days. Dust barely moves the
@@ -549,7 +718,7 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         st.periodFinish = uint64(block.timestamp + duration);
         st.unallocated = 0;
         st.totalDistributed += received;
-        return (received, st.rewardRate, st.periodFinish);
+        return (st.rewardRate, st.periodFinish);
     }
 
     /// @dev Pays both streams. Returns the reward-token amount; the stake-token amount has its own event.
@@ -567,7 +736,14 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         amount = l.rewardsAccrued;
         if (amount != 0) {
             l.rewardsAccrued = 0;
-            IERC20(p.rewardToken).safeTransfer(to, amount);
+            address rt = p.rewardToken;
+            if (rt == address(0)) {
+                // state is written first and every entry point is nonReentrant
+                (bool ok,) = to.call{value: amount}("");
+                if (!ok) revert PayoutFailed();
+            } else {
+                IERC20(rt).safeTransfer(to, amount);
+            }
             emit RewardsClaimed(lockId, to, amount);
         }
     }
@@ -729,7 +905,9 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     function _validateTiers(Tier[] calldata tiers) internal pure {
         if (tiers.length == 0 || tiers.length > MAX_TIERS) revert InvalidTiers();
         for (uint256 i; i < tiers.length; ++i) {
-            if (tiers[i].multiplierBps == 0 || tiers[i].multiplierBps > MAX_MULTIPLIER_BPS) revert InvalidTiers();
+            if (tiers[i].multiplierBps == 0 || tiers[i].multiplierBps > MAX_MULTIPLIER_BPS) {
+                revert InvalidTiers();
+            }
             if (tiers[i].minDuration < BUCKET) revert InvalidTiers();
             // longer locks never earn a lower multiplier than shorter ones
             if (
