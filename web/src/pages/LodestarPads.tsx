@@ -8,7 +8,7 @@ import { TxButton } from "../components/Tx";
 import { Addr, Amt, Badge, Card, Empty, Row } from "../components/Ui";
 import { isSet, ZERO } from "../lib/deployments";
 import { POLL, usePageTitle } from "../lib/hooks";
-import { padsOf, PADS, swapperFor, type LaunchpadsDeployment, type PadDeployment, type PadInfo, type PadKey } from "../lib/launchpads";
+import { padsOf, PADS, routerAddress, swapperFor, type LaunchpadsDeployment, type PadDeployment, type PadInfo, type PadKey } from "../lib/launchpads";
 import { useTokenMeta } from "../lib/monarchy";
 import { Switch } from "./Exile";
 import { ActivationSettings, LoadingCard, Router, useActivationSettings, type RouterEnv } from "./Lodestar";
@@ -78,7 +78,11 @@ type Found = {
   poolId?: Hex;
   /** the coin trades through a hook this launchpad's adapter knows, whatever it is quoted in */
   onHook: boolean;
+  /** the network's answer for the router address disagrees with the one worked out from the deployments file */
+  mismatch: boolean;
 };
+
+const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
 /** Asks every launchpad's factory about the coin. Only the coin's own launchpad answers `predict` without reverting
  * (the others don't know its hook); a coin on a known hook but quoted in something other than HYPE answers
@@ -99,7 +103,11 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
     const [of, pr, hk] = [r.data[3 * i], r.data[3 * i + 1], r.data[3 * i + 2]];
     const router = of.status === "success" && isSet(of.result as Address) ? (of.result as Address) : undefined;
     const p = pr.status === "success" ? (pr.result as readonly [Address, Hex]) : undefined;
-    return { info, pad, router, predicted: p?.[0], poolId: p?.[1], onHook: hk.status === "success" };
+    // the address the role goes to is never the RPC's word: derive it from the deployments file and the pool id, and
+    // flag any answer (predict's or lodestarOf's) that doesn't match it
+    const expected = p ? routerAddress(pads.lodestarImpl, pad.factory, p[1]) : undefined;
+    const mismatch = !!expected && (!same(p?.[0], expected) || (!!router && !same(router, expected)));
+    return { info, pad, router, predicted: expected, poolId: p?.[1], onHook: hk.status === "success", mismatch };
   });
   // the RPC failing every read looks like "on no launchpad"; say so instead
   if (r.data.every((x) => x.status === "failure" && !/revert/i.test(String(x.error))))
@@ -136,6 +144,16 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
       </Card>
     );
   }
+  if (target.mismatch)
+    return (
+      <Card>
+        <Empty title="The network gave a wrong router address">
+          The RPC's answer for this coin's router doesn't match the address worked out from Monarchy's deployment, so the page won't
+          send the creator role anywhere. Switch your wallet or the site to another Elysium RPC and try again. The right address is{" "}
+          <Addr address={target.predicted} />.
+        </Empty>
+      </Card>
+    );
   return (
     <>
       {choice === "auto" && (
@@ -212,7 +230,6 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
   const [handover, , pending, holdersBps, [, claimSelector], [, hookInfo], registrar, defaultSwapper, setAt, delay] = r.data;
   const twoStep = handover !== ONE_STEP;
   const deployed = !!code.data && code.data !== "0x";
-  const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
   const you = same(address, creator);
   const v4 = swapperFor(pad, hookInfo.poolManager);
   const swapper = route === "v4" && v4 ? v4 : ZERO;
@@ -306,6 +323,7 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
           >
             Propose router
           </TxButton>
+          <RouterCheck predicted={predicted} />
         </>
       ),
     });
@@ -350,6 +368,7 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
           >
             Hand over creator role
           </TxButton>
+          <RouterCheck predicted={predicted} />
         </>
       ),
     });
@@ -375,5 +394,15 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
         ))}
       </ol>
     </Card>
+  );
+}
+
+/** The address the role goes to, next to the button, as the activation script prints it. */
+function RouterCheck({ predicted }: { predicted: Address }) {
+  return (
+    <p className="muted small">
+      Sends the role to <Addr address={predicted} /> (<span className="mono">{predicted}</span>), worked out from Monarchy's deployments file. Your
+      wallet should show the same address.
+    </p>
   );
 }

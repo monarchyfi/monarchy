@@ -1,4 +1,4 @@
-import type { Address } from "viem";
+import { concat, getContractAddress, type Address, type Hex } from "viem";
 
 /** The launchpads on Elysium mainnet Monarchy routes for. The order is the one the forge scripts use. */
 export const PAD_KEYS = ["eleos", "kleos", "boxa"] as const;
@@ -65,4 +65,13 @@ export function swapperFor(pad: PadDeployment, poolManager?: Address): Address |
   const i = pad.poolManagers.findIndex((p) => p.toLowerCase() === poolManager.toLowerCase());
   const s = i >= 0 ? pad.swappers[i] : undefined;
   return s && !/^0x0{40}$/i.test(s) ? s : undefined;
+}
+
+/** The address a factory's router for `poolId` has, worked out here rather than asked of the RPC: LodestarFactory
+ * deploys each router as an OpenZeppelin minimal clone of the shared implementation with CREATE2, salted with the
+ * pool id. The page hands the creator role only to this address, so a node that lies about `predict` or
+ * `lodestarOf` can't redirect it. Both inputs come from the committed deployments file. */
+export function routerAddress(lodestarImpl: Address, factory: Address, poolId: Hex): Address {
+  const initCode = concat(["0x3d602d80600a3d3981f3363d3d373d3d3d363d73", lodestarImpl, "0x5af43d82803e903d91602b57fd5bf3"]);
+  return getContractAddress({ opcode: "CREATE2", from: factory, salt: poolId, bytecode: initCode });
 }
