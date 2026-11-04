@@ -296,11 +296,17 @@ function SomethingElse({ exile }: { exile: Address }) {
   const bad = input !== "" && !token;
   // a token with its own Lodestar has its own Exile reward pool and tiers
   const lodestar = useRouterOf(token);
-  const router = lodestar.router;
+  // A coin that pays holders dividends (Eleos, Kleos, Boxa) has a harvest, and Exile only takes its locks in the
+  // harvest's pool (anything else reverts HarvestPoolOnly), so that pool wins over whatever router the lookup found.
+  const harvest = useReadContract({ address: exile, abi: exileAbi, functionName: "harvestOf", args: [token ?? ZERO], query: { enabled: !!token } });
+  const harvestPool = harvest.data && harvest.data[0] !== 0n ? harvest.data[0] : undefined;
+  const router = harvestPool ? undefined : lodestar.router;
   const pid = useReadContract({ address: router, abi: lodestarAbi, functionName: "exilePoolId", query: { enabled: !!router } });
-  const pool = useReadContract({ address: exile, abi: exileAbi, functionName: "poolInfo", args: [pid.data ?? 0n], query: { enabled: pid.data !== undefined } });
+  const poolId = harvestPool ?? pid.data;
+  const pool = useReadContract({ address: exile, abi: exileAbi, functionName: "poolInfo", args: [poolId ?? 0n], query: { enabled: poolId !== undefined } });
   const tiers = (pool.data?.tiers ?? []) as readonly Tier[];
-  const checking = !!token && (lodestar.isLoading || (!!router && (pid.isLoading || pool.isLoading)));
+  const rewarded = !!harvestPool || !!router;
+  const checking = !!token && (lodestar.isLoading || harvest.isLoading || (!!router && pid.isLoading) || (rewarded && pool.isLoading));
   return (
     <>
       <div className="note-box">
@@ -330,13 +336,15 @@ function SomethingElse({ exile }: { exile: Address }) {
                 ? "Paste the address of the token or LP to lock."
                 : checking
                   ? "Checking for a Lodestar…"
-                  : router
+                  : harvestPool
+                    ? "This coin pays its holders dividends, so Exile only locks it in its Lodestar's reward pool, where the dividends Exile earns on it go to lockers. It earns rewards by tier."
+                    : router
                     ? "This token uses Lodestar, so this lock earns rewards by tier."
                     : "No Lodestar for this token: a plain lock, held until the unlock date, with no rewards."}
           </p>
           {token && !checking && (
             <div style={{ marginTop: 16 }}>
-              <LockForm key={token} exile={exile} token={token} poolId={router ? pid.data : 0n} tiers={router ? tiers : []} tiersLoading={!!router && (!pid.data || !pool.data)} />
+              <LockForm key={token} exile={exile} token={token} poolId={rewarded ? poolId : 0n} tiers={rewarded ? tiers : []} tiersLoading={rewarded && (!poolId || !pool.data)} />
             </div>
           )}
         </>

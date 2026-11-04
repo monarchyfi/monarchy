@@ -1755,6 +1755,11 @@ export const exileAbi = [
   },
   {
     "type": "error",
+    "name": "HarvestPoolOnly",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidAmount",
     "inputs": []
   },

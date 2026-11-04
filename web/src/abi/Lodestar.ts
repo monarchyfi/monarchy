@@ -868,6 +868,24 @@ export const lodestarAbi = [
   },
   {
     "type": "function",
+    "name": "releaseForeignRole",
+    "inputs": [
+      {
+        "name": "foreignToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "sandfall",
     "inputs": [],
     "outputs": [
@@ -1316,6 +1334,25 @@ export const lodestarAbi = [
   },
   {
     "type": "event",
+    "name": "ForeignRoleReleased",
+    "inputs": [
+      {
+        "name": "foreignToken",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "HoldersPayoutFailed",
     "inputs": [
       {
@@ -1580,6 +1617,11 @@ export const lodestarAbi = [
   {
     "type": "error",
     "name": "NotExtending",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OnlyFactory",
     "inputs": []
   },
   {

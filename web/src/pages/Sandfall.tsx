@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useBalance, useConnection, useReadContract, useReadContracts } from "wagmi";
 import { formatUnits, isAddress, type Address } from "viem";
-import { mockERC20Abi, sandfallAbi } from "../abi";
+import { exileAbi, mockERC20Abi, sandfallAbi } from "../abi";
 import { TxButton, WithApproval } from "../components/Tx";
 import { ConnectPrompt } from "../components/States";
 import { Addr, Badge, Card, Empty, Row, Sym } from "../components/Ui";
@@ -205,6 +205,11 @@ function CreateStream({ sandfall, quote, token, quoteSymbol, tokenSymbol }: { sa
   const bal = useReadContract({ address: asset, abi: mockERC20Abi, functionName: "balanceOf", args: [address ?? ZERO], query: { enabled: !!asset && !isNative && !!address, ...POLL.query } });
   const native = useBalance({ address, query: { enabled: isNative && !!address, ...POLL.query } });
   const balance = isNative ? native.data?.value : bal.data;
+  // Eleos, Kleos and Boxa coins pay HYPE dividends to whoever holds them, and Sandfall can't take HYPE that way,
+  // so a coin vested here earns dividends nobody can ever claim
+  const d = useDeployment();
+  const harvest = useReadContract({ address: d?.exile, abi: exileAbi, functionName: "harvestOf", args: [asset ?? ZERO], query: { enabled: !!d?.pads && !!asset && !isNative, staleTime: 60_000 } });
+  const paysDividends = !!harvest.data && harvest.data[0] !== 0n;
   const decimals = isNative ? 18 : Number(meta.data?.[0] ?? 18);
   const sym = isNative ? "HYPE" : (meta.data?.[1] ?? (assetChoice === "quote" ? quoteSymbol : assetChoice === "token" ? tokenSymbol : "")) ?? "";
   const value = safeParse(amount, decimals);
@@ -282,6 +287,13 @@ function CreateStream({ sandfall, quote, token, quoteSymbol, tokenSymbol }: { sa
               ]}
             />
             {assetChoice === "other" && <input className="input" aria-label="Token address" placeholder="Token address, 0x…" value={other} onChange={(e) => setOther(e.target.value.trim())} />}
+            {d?.pads && !isNative && (
+              <p className={paysDividends ? "warn small" : "muted small"}>
+                {paysDividends
+                  ? "Don't vest this coin here. It pays its holders HYPE dividends, and the dividends earned by coins sitting in Sandfall can never be claimed by anyone. Lock it in Exile instead, where they reach the lockers."
+                  : "Don't vest Eleos, Kleos or Boxa coins here: they pay holders HYPE dividends, and the dividends earned by coins sitting in Sandfall can never be claimed. Lock them in Exile instead."}
+              </p>
+            )}
           </Step>
 
           <Step n={2} title="Recipient and amount">

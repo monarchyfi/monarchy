@@ -222,6 +222,10 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
     args: [token, poolId, creator ?? ZERO],
     query: { enabled: !!creator, ...POLL.query },
   });
+  // the role sent to another coin's router from this factory (a pasted address, two coins mixed up): that router
+  // can't hand it back, and only Monarchy's rescueDeploy can move it into this coin's router
+  const other = useReadContract({ address: creator, abi: lodestarAbi, functionName: "token", query: { enabled: !!creator && !same(creator, predicted), retry: false } });
+  const otherRouter = useReadContract({ ...fac, functionName: "lodestarOf", args: [other.data ?? ZERO], query: { enabled: !!other.data && !same(other.data, token) } });
   const [tokenMeta] = useTokenMeta([token]);
   const s = useActivationSettings();
   const [route, setRoute] = useState<"default" | "v4">("default");
@@ -244,7 +248,18 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
         <Empty title="The role went to the router before it existed">
           The creator role already sits at this coin's router address, but the router hasn't been deployed, and nothing on chain proves who
           sent it. Ask Monarchy to deploy it for you: the factory owner checks who handed the role over and deploys the router with your
-          settings. Router address: <Addr address={predicted} />
+          settings in one transaction. Router address: <Addr address={predicted} />
+        </Empty>
+      </Card>
+    );
+  if (!twoStep && !!other.data && !same(other.data, token) && same(otherRouter.data, creator))
+    return (
+      <Card title="Activate Lodestar">
+        <Empty title="The role went to another coin's router">
+          This coin's creator role sits at <Addr address={creator} />, the Lodestar of a different coin. That router can't hand back a role
+          that isn't its own coin's, and nothing on chain proves who sent it. Ask Monarchy to recover it: the factory owner checks who
+          handed the role over, deploys this coin's router with your settings and moves the role into it in the same transaction.
+          This coin's router address: <Addr address={predicted} />
         </Empty>
       </Card>
     );
