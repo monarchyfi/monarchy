@@ -123,4 +123,8 @@ jobs:
         if: steps.file.outputs.deployed == 'true'
         env:
           KEEPER_PRIVATE_KEY: ${{ secrets.MAINNET_KEEPER_PRIVATE_KEY }}
+          # optional repository variables; unset keeps the keeper's defaults
+          MIN_ROUTE_WEI: ${{ vars.MAINNET_MIN_ROUTE_WEI }}
+          MIN_ROUTE_TOKENS: ${{ vars.MAINNET_MIN_ROUTE_TOKENS }}
+          MIN_HARVEST_WEI: ${{ vars.MAINNET_MIN_HARVEST_WEI }}
         run: tools/keeper-launchpads.sh "$FILE" "$CHAIN_ID"

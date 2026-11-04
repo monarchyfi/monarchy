@@ -218,6 +218,33 @@ contract ExileNativeTest is Test {
         assertEq(exile.harvest(address(token)), 0);
     }
 
+    /// @dev Audit round 5, L-2: the harvest pays the dividends on all of Exile's balance of a coin to one pool, so
+    /// Exile only takes locks of that coin in that pool.
+    function test_aHarvestedCoinOnlyLocksInItsHarvestPool() public {
+        uint256 poolId = _pool(address(0));
+        uint256 otherPool = _pool(address(0));
+        _lock(alice, 0, 1e18, 30 days); // before the harvest, plain locks still work
+        vm.prank(registrar);
+        exile.setHarvest(address(token), poolId, address(token), CLAIM_FOR);
+
+        token.mint(bob, 2e18);
+        vm.startPrank(bob);
+        token.approve(address(exile), 2e18);
+        vm.expectRevert(Exile.HarvestPoolOnly.selector);
+        exile.lockERC20(address(token), 1e18, uint64(block.timestamp + 30 days), 0);
+        vm.expectRevert(Exile.HarvestPoolOnly.selector);
+        exile.lockERC20(address(token), 1e18, uint64(block.timestamp + 30 days), otherPool);
+        exile.lockERC20(address(token), 1e18, uint64(block.timestamp + 30 days), poolId);
+        vm.stopPrank();
+
+        // other coins are unaffected
+        usdc.mint(bob, 1e6);
+        vm.startPrank(bob);
+        usdc.approve(address(exile), 1e6);
+        exile.lockERC20(address(usdc), 1e6, uint64(block.timestamp + 1 days), 0);
+        vm.stopPrank();
+    }
+
     function test_harvestNeedsAHarvestPool() public {
         vm.expectRevert(Exile.NoHarvest.selector);
         exile.harvest(address(token));

@@ -171,4 +171,25 @@ contract KleosForkTest is ForkBase {
         assertEq(source.creator(AGORA, bytes32(0)), next);
         assertFalse(l.isCreator());
     }
+
+    /// @dev Audit round 5, L-1: AGORA's creator sends the role to BULL's router (both on hook A). Kleos keys creator
+    /// fees by address, so BULL's router would collect AGORA's fees for its own lockers; the owner moves the role
+    /// into AGORA's own router instead.
+    function test_roleSentToAnotherCoinsRouterIsRescued() public {
+        Lodestar bull = _activate(BULL, address(0));
+        address dev = source.creator(AGORA, bytes32(0));
+        address hook = _hook(AGORA);
+        vm.prank(dev);
+        IKleosHook(hook).transferCreator(AGORA, address(bull));
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.NotPoolCreator.selector);
+        factory.deploy(_params(AGORA, address(0)));
+
+        Lodestar agora = Lodestar(payable(factory.rescueDeploy(_params(AGORA, address(0)), dev)));
+        assertEq(source.creator(AGORA, bytes32(0)), address(agora));
+        assertTrue(agora.isCreator());
+        assertTrue(bull.isCreator(), "BULL's router keeps its own role");
+        _volume(source, AGORA, 0.2 ether, 3);
+        assertGt(_owedTo(AGORA, address(agora)), 0, "AGORA's fees now accrue to AGORA's router");
+    }
 }

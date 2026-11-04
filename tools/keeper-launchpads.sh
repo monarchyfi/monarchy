@@ -12,12 +12,18 @@
 #      the swapper, and the keeper's gas shouldn't run code Monarchy didn't deploy;
 #   2. catches its Exile pool up when it is more than CURRENT_WITHIN hours behind, MAX_BUCKETS_PER_CALL hours a
 #      poke (at most 40), so the harvest and the payouts below have no hours left to walk;
-#   3. calls `distribute()` when there is something to route: fees claimable on the launchpad, a balance, a
-#      parked payout, or a buyback reserve with a swapper to spend it and no buyback in the last 30 minutes. If the receipt says a holder payout was
-#      parked (HoldersPayoutFailed or TokenHoldersPayoutFailed) it catches up and tries once more;
-#   4. calls `Exile.harvest(coin)` when Exile has a harvest for the coin and a dry run says it brings in HYPE,
-#      so the dividends Exile earns on locked coins drip to the lockers. After distribute, because on Eleos the
-#      distribute is what pays the holder share into the coin.
+#   3. calls `distribute()` when there is something to route: at least MIN_ROUTE_WEI of HYPE (fees claimable on
+#      the launchpad plus the router's balance) or MIN_ROUTE_TOKENS of the coin, a parked payout, or a buyback
+#      reserve with a swapper to spend it and no buyback in the last 30 minutes. If the receipt says a holder
+#      payout was parked (HoldersPayoutFailed or TokenHoldersPayoutFailed) it catches up and tries once more;
+#   4. calls `Exile.harvest(coin)` when Exile has a harvest for the coin and a dry run says it brings in at least
+#      MIN_HARVEST_WEI, so the dividends Exile earns on locked coins drip to the lockers. After distribute,
+#      because on Eleos the distribute is what pays the holder share into the coin.
+# - The minimums keep dust from costing a send every run: a native router takes HYPE from anyone, so 1 wei would
+#   otherwise count as work. Below them nothing is lost, it waits for the next run. Defaults: MIN_ROUTE_WEI 1e15
+#   (0.001 HYPE, about ten distributes' gas), MIN_ROUTE_TOKENS 1e18 (one whole coin at 18 decimals), and
+#   MIN_HARVEST_WEI 1e13 (about one harvest's gas): only trades put dividends in a harvest, so the harvest's
+#   minimum only stops sends that cost more than they bring. Set any of them to 1 to route anything.
 # - Every send dry-runs first (`cast estimate`), refuses an estimate above MAX_GAS (default 4,000,000), sends with
 #   30% headroom over the estimate, and checks the receipt (`cast send` alone exits 0 on a revert).
 # - A router that fails is reported and the others still run; the script exits 1 at the end if any failed:
@@ -27,6 +33,9 @@ set -euo pipefail
 FILE=${1:-deployments/launchpads/99901.json}
 CHAIN_ID=${2:-${CHAIN_ID:-99901}}
 MAX_GAS=${MAX_GAS:-4000000}
+MIN_ROUTE_WEI=${MIN_ROUTE_WEI:-1000000000000000}     # 0.001 HYPE
+MIN_ROUTE_TOKENS=${MIN_ROUTE_TOKENS:-1000000000000000000} # one whole coin at 18 decimals
+MIN_HARVEST_WEI=${MIN_HARVEST_WEI:-10000000000000}     # 0.00001 HYPE
 CURRENT_WITHIN=6 # hours; the keeper runs every 3, so a healthy pool is never further behind
 : "${RPC_URL:?set RPC_URL}"
 : "${KEEPER_PRIVATE_KEY:?set KEEPER_PRIVATE_KEY}"
@@ -44,6 +53,17 @@ fi
 
 call() { cast call "$@" --rpc-url "$RPC_URL"; }
 lower() { tr '[:upper:]' '[:lower:]'; }
+# ge <a> <b>: a >= b for unsigned decimals of any size (bash arithmetic stops at 2^63)
+ge() {
+  local a=$1 b=$2
+  if [ ${#a} -ne ${#b} ]; then [ ${#a} -gt ${#b} ]; else [[ ! "$a" < "$b" ]]; fi
+}
+for v in MIN_ROUTE_WEI MIN_ROUTE_TOKENS MIN_HARVEST_WEI; do
+  if ! [[ "${!v}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "::error::$v must be a whole number of at least 1, got '${!v}'."
+    exit 1
+  fi
+done
 
 EXILE=$(jq -r '.exile // empty' "$FILE")
 if ! [[ "$EXILE" =~ ^0x[0-9a-fA-F]{40}$ ]] || [ "$(cast code "$EXILE" --rpc-url "$RPC_URL")" = "0x" ]; then
@@ -124,7 +144,7 @@ has_work() {
   fi
   tokenSide=$(sed -n 1p <<<"$preview" | awk '{print $1}')
   quoteTotal=$(sed -n 2p <<<"$preview" | awk '{print $1}')
-  if [ "$tokenSide" != "0" ] || [ "$quoteTotal" != "0" ]; then return 0; fi
+  if ge "$tokenSide" "$MIN_ROUTE_TOKENS" || ge "$quoteTotal" "$MIN_ROUTE_WEI"; then return 0; fi
   if [ "$(call "$r" "holdersReserve()(uint256)" | awk '{print $1}')" != "0" ]; then return 0; fi
   if [ "$(call "$r" "treasuryReserve()(uint256)" | awk '{print $1}')" != "0" ]; then return 0; fi
   # a buyback reserve with a swapper, once the 30 minutes since the last buyback are up. Not gated on
@@ -135,7 +155,6 @@ has_work() {
   [ "$(call "$r" "nextBuybackAt()(uint64)" | awk '{print $1}')" -le "$(cast block latest -f timestamp --rpc-url "$RPC_URL")" ]
 }
 
-# run_router <router>
 # distribute_router <router> <exilePoolId>: distribute() when there is work, with one retry for a parked payout.
 distribute_router() {
   local r=$1 pid=$2
@@ -156,7 +175,8 @@ distribute_router() {
   fi
 }
 
-# harvest_token <coin>: Exile.harvest when Exile has a harvest for the coin and a dry run says it brings HYPE in.
+# harvest_token <coin>: Exile.harvest when Exile has a harvest for the coin and a dry run says it brings in at
+# least MIN_HARVEST_WEI.
 harvest_token() {
   local token=$1 target got=0 out
   target=$(call "$EXILE" "harvestOf(address)(uint256,address,bytes4)" "$token" | sed -n 2p)
@@ -164,7 +184,10 @@ harvest_token() {
   if out=$(call "$EXILE" "harvest(address)(uint256)" "$token" --from "$KEEPER" 2>/dev/null); then
     got=$(awk '{print $1}' <<<"$out")
   fi
-  [ "$got" != "0" ] || return 0
+  if ! ge "$got" "$MIN_HARVEST_WEI"; then
+    [ "$got" = "0" ] || echo "harvest would bring $got wei, under MIN_HARVEST_WEI; waiting"
+    return 0
+  fi
   echo "harvest brings $got wei of dividends to lockers"
   send "$EXILE" "harvest(address)" "$token"
 }

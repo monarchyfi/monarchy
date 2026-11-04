@@ -37,4 +37,5 @@ interface ILodestar {
     function distribute() external;
     function steward() external view returns (address);
     function upgradeTarget() external view returns (address);
+    function releaseForeignRole(address foreignToken, address to) external;
 }

@@ -57,6 +57,8 @@ If the second transaction of a one-step activation doesn't land, run the script 
 
 If a creator sent the role to the predicted address before the router existed, nothing on chain proves who sent it, so `deploy` refuses everyone. The script prints the `rescueDeploy(params, steward)` calldata instead; the factory owner checks off chain who sent the role and deploys the router with the creator's settings.
 
+If a creator sent the role to the router of another coin on the same launchpad (for example an address copied from the wrong coin's page), `rescueDeploy` covers that too, and the script prints its calldata the same way. The factory deploys the coin's own router and has the router holding the role pass it on with `releaseForeignRole`, which only the factory can call, which refuses the router's own coin, and which the factory only calls with the new router as the recipient. What the coin earned while the wrong router held the role can't always be brought back: Kleos keeps creator fees per address, so the wrong router claims them with its own and routes them to its own lockers. On Eleos the coin's unpaid fees stay in the coin's book and move with the role, unless someone calls `payCreator` for it first. Boxa needs none of this: a wrong `proposeCreator` is undone by proposing again, and `rescueDeploy` refuses Boxa coins.
+
 A coin whose holder share Exile can't pass on to lockers is refused at deploy with `HoldersSplitActive` (today only Kleos hook C coins with a holder share).
 
 ## Fees
@@ -64,12 +66,17 @@ A coin whose holder share Exile can't pass on to lockers is refused at deploy wi
 - **The launchpad's own split doesn't change.** The tax rate and the split between creator, holders, buyback and platform were set when the coin launched. The router only ever receives the creator share. For lockers to earn the whole tax that a launchpad pays creators, the coin should launch with its tax going to the creator (Eleos `creatorBps`, Kleos `creatorBps`, Boxa's creator share); a share left to the launchpad's own holder dividends still reaches lockers through the harvest.
 - **Routing.** `distribute()` runs the adapter's collect and claim calls (Eleos `process` and `payCreator`, Kleos `claimCreatorFees`, Boxa `claim`) and then splits the router's HYPE balance: lockers through `Exile.notifyReward{value}`, the Team Treasury through `Sandfall.topUp{value}`, buyback through the swapper. HYPE sent to the router any other way is routed the same way. The router only calls its own hook and pays nothing out except to Exile, Sandfall, the swapper and the burn sink.
 - **Token side.** These launchpads take no tax in the coin, so the token side is normally 0; any coins the router holds go to lockers (the default) or are burned.
+- **Boxa's platform cut.** Boxa keeps 30% of the tax before its creator, buyback and holder split, so every share a Boxa coin shows is of the remaining 70%: a coin whose creator share is 30% pays the router 21% of the tax, and a 50% holder share is 35% of it. Boxa's `pools(poolId)` lists the shares as creator, buyback, holders (measured on EPEPE, whose 3000, 2000, 5000 paid the creator 2100 bps of the tax and the holders about 3500), and the adapter reads them in that order.
 
 ## Dividends and the harvest
 
-All three launchpads can pay holders HYPE dividends by balance, and none of them excludes Exile. So Exile earns dividends on every locked coin. `Exile.harvest(coin)` claims them and notifies them to the coin's reward pool, where they drip to lockers by points like any other payout. The factory sets the harvest when it deploys a router (`setHarvest`, which only a registrar can call and which only accepts the three claim shapes in the table above), and anyone can call `harvest`. HYPE that a third party pushes to Exile (Eleos lets anyone call `claimFor(exile)`) is credited to the coin it came from and joins the next harvest; HYPE from anyone else is kept apart and never harvested.
+All three launchpads can pay holders HYPE dividends by balance, and none of them excludes Exile. So Exile earns dividends on every locked coin. `Exile.harvest(coin)` claims them and notifies them to the coin's reward pool, where they drip to lockers by points like any other payout. The factory sets the harvest when it deploys a router (`setHarvest`, which only a registrar can call and which only accepts the three claim shapes in the table above), and anyone can call `harvest`.
 
-A locker who unlocks just before a harvest misses that harvest's dividends, so the keeper harvests on every run. A router upgrade moves the coin's harvest to the new router's pool.
+HYPE that reaches Exile outside a harvest is kept per sender and joins the harvest of the coin that sent it. That covers Eleos, where anyone can call `claimFor(exile)` and the coin itself pays. On Kleos and Boxa the payer of a dividend claim is the pool manager, so HYPE a holder pushes to Exile there (`claimRewards(exile)` on Kleos, `claimRewards(coin, exile)` on Boxa) is set aside under the pool manager and never harvested; only that holder loses it. Harvests themselves are counted whoever pays them.
+
+**Only the harvest pool takes locks of a harvested coin.** A harvest claims the dividends on all of Exile's balance of the coin and pays them to one pool, so a plain time lock or a lock in another pool of the same coin would be earning dividends for that pool's lockers. Once a coin has a harvest, `lockERC20` refuses any lock of it outside the harvest pool (`HarvestPoolOnly`). Locks made before the harvest was set, that is before the router was activated, keep running to their end, and their coins' dividends go to the harvest pool from then on.
+
+A locker who unlocks just before a harvest misses that harvest's dividends, so the keeper harvests on every run. A router upgrade moves the coin's harvest to the new router's pool, and new locks of the coin go there; locks in the old pool keep running to their end.
 
 ## Buybacks: phase 1 and phase 2
 
@@ -111,8 +118,10 @@ forge script contracts/script/FinishLaunchpads.s.sol --rpc-url $RPC_URL --broadc
 
 1. skips it if it doesn't hold its coin's creator role, or if its swapper is neither none nor a V4Swapper from the deployments file (the creator picks the swapper, and the keeper's gas shouldn't run code Monarchy didn't deploy);
 2. catches its Exile pool up when it is more than 6 hours behind;
-3. calls `distribute()` when there is something to route (fees claimable on the launchpad, a balance, a parked payout, or a buyback reserve with a swapper once 30 minutes have passed since the last buyback), with one retry if a holder payout was parked;
-4. calls `Exile.harvest(coin)` when a dry run says it brings HYPE in. This comes after distribute, because on Eleos the `process` inside distribute is what pays the holder share into the coin.
+3. calls `distribute()` when there is something to route (at least `MIN_ROUTE_WEI` of HYPE claimable on the launchpad or held by the router, at least `MIN_ROUTE_TOKENS` of the coin, a parked payout, or a buyback reserve with a swapper once 30 minutes have passed since the last buyback), with one retry if a holder payout was parked;
+4. calls `Exile.harvest(coin)` when a dry run says it brings in at least `MIN_HARVEST_WEI`. This comes after distribute, because on Eleos the `process` inside distribute is what pays the holder share into the coin.
+
+The minimums keep dust from costing a send on every run: a router takes HYPE from anyone, so without them 1 wei would count as work. Amounts below them aren't lost; they wait for a run where there's more. The defaults are 0.001 HYPE for a distribute (`MIN_ROUTE_WEI`, about ten times its gas at Elysium's 0.2 gwei), one whole coin for the token side (`MIN_ROUTE_TOKENS`), and 0.00001 HYPE for a harvest (`MIN_HARVEST_WEI`, about its gas: only trades put dividends there, so the minimum only stops a harvest that costs more than it brings). Each can be changed with a repository variable of the same name prefixed `MAINNET_` (for example `MAINNET_MIN_ROUTE_WEI`), and 1 routes anything.
 
 Every send is dry-run first, refused above `MAX_GAS` (default 4,000,000), sent with 30% headroom over the estimate and checked by its receipt. A failing router is reported and the others still run; the job goes red at the end. Nothing is sent unless the RPC answers chain id 99901. The job is skipped until the key, the RPC variable and the deployments file all exist. Boxa's hooks also have a permissionless `releaseHolderRewards(poolId)`; the fork tests show harvests on all three Boxa hooks work without it, so the keeper doesn't call it.
 
@@ -125,17 +134,24 @@ Every send is dry-run first, refused above `MAX_GAS` (default 4,000,000), sent w
 - deploy a stranded one-step router for its creator (`rescueDeploy`),
 - propose and remove Exile registrars (adding one waits 12 hours).
 
-It can't touch routed fees, locks or streams. The plan is a Safe 2-of-2 with one key held by the Ascend launchpad team. **Recommendation: make it 2-of-3 with a cold backup key.** With 2-of-2, losing either key freezes upgrades, new hook generations and rescue deploys for good. Safe 1.3.0 is deployed on Elysium mainnet at its canonical addresses (proxy factory `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2`).
+It can't touch routed fees, locks or streams. Two of those powers need a check by the signers each time, because nothing on chain does it for them:
+
+- **A new registrar.** A registrar can point any coin's harvest at a pool of its own and collect that coin's dividends there, so the only registrars should be the three factories. Watch Exile for `RegistrarProposed`: a proposal nobody planned has 12 hours before it can be added, and `removeRegistrar` drops it at once. A check in `setHarvest` on who created the pool wouldn't help, since a hostile registrar could create its own pool.
+- **A rescue deploy.** The settings in `rescueDeploy` calldata (split, swapper, treasury recipient, treasury window, steward) are whatever its author wrote, and nothing the creator signed binds them. Compare them with what the creator asked for, in writing and from the creator's address, before signing.
+
+The plan is a Safe 2-of-2 with one key held by the Ascend launchpad team. **Recommendation: make it 2-of-3 with a cold backup key.** With 2-of-2, losing either key freezes upgrades, new hook generations and rescue deploys for good. Safe 1.3.0 is deployed on Elysium mainnet at its canonical addresses (proxy factory `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2`).
 
 ## Operational notes
 
 - **Max-wallet limits.** Eleos and Kleos coins can cap any single wallet's balance during a launch window. Exile holds every locker's coins in one balance, so locks of a young coin can hit that cap until the window ends.
 - **Gas headroom for locks.** A lock sent with exactly the gas a wallet estimated can run out of gas when its block lands in a later Exile hour bucket than the estimate saw (the rehearsal hit this on Eleos and Boxa coins). The keeper adds 30%; the website should add headroom on lock transactions too.
+- **Don't vest launchpad coins in Sandfall.** Sandfall can't take HYPE, so the dividends a vested Eleos, Kleos or Boxa coin earns can't be collected by anyone and stay in the launchpad's books for good (Eleos's `claimFor(sandfall)` reverts; Kleos and Boxa only pay the holder who calls). Vest a team allocation of these coins elsewhere, or lock it in the coin's Exile pool. The treasury streams the routers open hold HYPE, not coins, so they aren't affected.
+- **A quiet coin's buyback can wait.** The price observer moves only when something pokes it, and `distribute` is the keeper's poke. After a day with no trades, one large trade puts spot far from the average, and the next distribute buys nothing because the floor isn't met. The reserve waits while the average catches up over the next runs and nothing halves, so a "bought nothing" on a quiet coin isn't a fault.
 - **Kleos hook C.** Coins on hook C quoted in HYPE with no holder share work. A holder share there is paid in stock tokens through a separate distributor that Exile can't claim from, so those coins can't activate.
 - **Not built yet.** The plan's forwarding of Kleos's and Eleos's `lowerTax` (a creator lowering the coin's tax after handing the role over) isn't in this release; a router can't lower its coin's tax.
 
 ## Tests
 
-- `forge test` runs the unit suites, including native HYPE routing, one-step handover and rescue, the harvest shapes and their checks, and the v4 pieces on a mock pool manager. The fork suites skip without an RPC.
-- `ELYSIUM_RPC_URL=https://rpc.eleos.fun forge test --match-path "contracts/test/fork/*Fork.t.sol"` runs 27 tests against the real hooks and pool managers on a fork (`ELYSIUM_FORK_BLOCK` pins a block): views, activation in both orders, claim and distribute on every hook kind, the dev's earlier fees staying the dev's, buybacks through `V4Swapper` on all four pool managers, harvests on every supported shape, the refusals, and the steward handing the role back.
+- `forge test` runs the unit suites, including native HYPE routing, one-step handover and both rescues, the harvest shapes and their checks, the harvest pool lock rule, and the v4 pieces on a mock pool manager. The fork suites skip without an RPC.
+- `ELYSIUM_RPC_URL=https://rpc.eleos.fun forge test --match-path "contracts/test/fork/*Fork.t.sol"` runs 29 tests against the real hooks and pool managers on a fork (`ELYSIUM_FORK_BLOCK` pins a block): views, activation in both orders, claim and distribute on every hook kind, the dev's earlier fees staying the dev's, buybacks through `V4Swapper` on all four pool managers, harvests on every supported shape, the refusals, the steward handing the role back, and a role sent to another coin's router coming back on Eleos and Kleos.
 - `tools/rehearse-launchpads.sh` runs the deploy, activation and keeper scripts end to end on an anvil fork.
