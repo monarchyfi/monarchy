@@ -199,4 +199,22 @@ contract EleosForkTest is ForkBase {
         assertEq(IEleosHook(HOOK3).config(ELYSA).creator, next);
         assertFalse(l.isCreator());
     }
+
+    /// @dev Audit round 5, L-1: SLYMZ's creator sends the role to ELYSA's router by mistake. The owner deploys
+    /// SLYMZ's own router with the creator's settings and moves the role into it.
+    function test_roleSentToAnotherCoinsRouterIsRescued() public {
+        Lodestar elysa = _activate(ELYSA, address(0));
+        address dev = _creator(SLYMZ);
+        vm.prank(dev);
+        IEleosHook(HOOK3).transferCreator(SLYMZ, address(elysa));
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.NotPoolCreator.selector);
+        factory.deploy(_params(SLYMZ, address(0)));
+
+        Lodestar slymz = Lodestar(payable(factory.rescueDeploy(_params(SLYMZ, address(0)), dev)));
+        assertEq(_creator(SLYMZ), address(slymz));
+        assertTrue(slymz.isCreator());
+        assertTrue(elysa.isCreator(), "ELYSA's router keeps its own role");
+        assertEq(slymz.steward(), dev);
+    }
 }

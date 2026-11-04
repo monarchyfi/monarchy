@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {LaunchpadsBase} from "./LaunchpadsBase.s.sol";
 import {console2} from "forge-std/Script.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Exile} from "../src/Exile.sol";
 import {Lodestar} from "../src/Lodestar.sol";
 import {LodestarFactory} from "../src/LodestarFactory.sol";
@@ -28,8 +29,9 @@ import {MockArbSys} from "../src/mocks/MockArbSys.sol";
 /// TREASURY_BPS, MAX_SLIPPAGE_BPS, TOKEN_TO_HOLDERS, TREASURY_WINDOW (seconds), LOCK_FOREVER=false, and SWAPPER:
 /// unset uses the factory's default (none in phase 1, so the buyback share waits in reserve), `v4` the V4Swapper
 /// recorded for the coin's pool manager, or an address.
-/// If the role already sits at the predicted router address with no router there (sent before deploying), nothing
-/// on chain proves who sent it: the script prints the `rescueDeploy` calldata for the factory owner instead.
+/// If the role already sits at the predicted router address with no router there (sent before deploying), or at
+/// another coin's router from the same factory (a mixed-up address), nothing on chain proves who sent it: the
+/// script prints the `rescueDeploy` calldata for the factory owner instead.
 contract ActivateLaunchpad is LaunchpadsBase {
     function run() external {
         // forge runs the script in its own EVM, which has no ArbSys; Kleos's hooks call it. This stand-in only
@@ -68,8 +70,12 @@ contract ActivateLaunchpad is LaunchpadsBase {
             _check(predicted);
             return;
         }
-        if (!twoStep && creator == predicted) {
-            console2.log("the role was sent to the router address before the router existed.");
+        if (!twoStep && (creator == predicted || _otherCoinsRouter(factory, creator, token))) {
+            if (creator == predicted) {
+                console2.log("the role was sent to the router address before the router existed.");
+            } else {
+                console2.log("the role was sent to another coin's router:", creator);
+            }
             console2.log("the factory owner deploys it with rescueDeploy; this is the calldata for the multisig,");
             console2.log("to the factory", address(factory), "with this creator as steward:", me);
             console2.logBytes(abi.encodeCall(LodestarFactory.rescueDeploy, (p, me)));
@@ -100,6 +106,16 @@ contract ActivateLaunchpad is LaunchpadsBase {
         }
         vm.stopBroadcast();
         _check(predicted);
+    }
+
+    /// @dev True when `holder` is a router `factory` made for a coin other than `token`.
+    function _otherCoinsRouter(LodestarFactory factory, address holder, address token) internal view returns (bool) {
+        if (holder.code.length == 0) return false;
+        try Lodestar(payable(holder)).token() returns (IERC20 other) {
+            return address(other) != token && factory.lodestarOf(address(other)) == holder;
+        } catch {
+            return false;
+        }
     }
 
     /// @dev Pays the Eleos creator what the hook holds for them before the role (and that balance) moves.

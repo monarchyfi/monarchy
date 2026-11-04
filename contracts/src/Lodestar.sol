@@ -131,6 +131,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     event CreatorRoleLocked(uint64 until);
     event CreatorAccepted();
     event CreatorTransferOutStarted(address next);
+    event ForeignRoleReleased(address indexed foreignToken, address to);
     event ListingEnrolled(uint256 cap);
     event ListingClosed();
     event StewardTransferred(address indexed previous, address indexed next);
@@ -158,6 +159,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     error CatchUpOutOfGas();
     error BadCallTarget();
     error NativeNotAccepted();
+    error OnlyFactory();
 
     struct Market {
         uint256 ema; // sqrt prices, Q64.96
@@ -523,6 +525,18 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit CreatorTransferOutStarted(next);
     }
 
+    /// @notice Pass on another coin's creator role that landed here by mistake: one-step launchpads (Kleos,
+    /// Eleos) move a role in one call to any address, so a creator can send it to the wrong router. Only the
+    /// factory calls this, from `rescueDeploy`, which hands the role to that coin's own router in the same
+    /// transaction. This router's own role, settings and funds are untouched.
+    function releaseForeignRole(address foreignToken, address to) external nonReentrant {
+        if (msg.sender != factory) revert OnlyFactory();
+        if (foreignToken == address(token)) revert SelfTransfer();
+        (bytes32 foreignPoolId, address foreignHook,) = source.resolve(foreignToken, address(quote));
+        _runOn(foreignHook, source.transferOutCalls(foreignToken, foreignPoolId, to), true);
+        emit ForeignRoleReleased(foreignToken, to);
+    }
+
     /// @notice The one way out of the creator lock: propose moving the role to this token's router on the
     /// newer factory that this router's factory names as its successor. Anyone can execute the move 7 days
     /// later, within the 7 days after that, so holders see it coming. It needs both the factory owner (who
@@ -657,12 +671,18 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// first failure (steward and factory actions); otherwise a failure stops the plan and returns false, so
     /// `distribute` keeps routing.
     function _run(IFeeSource.Call[] memory cs, bool strict) internal returns (bool) {
+        return _runOn(hook, cs, strict);
+    }
+
+    /// @dev Sends the adapter's calls, each of which must target `target` (the router's own hook, except when
+    /// passing on another coin's role, where it is that coin's hook).
+    function _runOn(address target, IFeeSource.Call[] memory cs, bool strict) internal returns (bool) {
         for (uint256 i; i < cs.length; ++i) {
-            if (cs[i].target != hook) {
+            if (cs[i].target != target) {
                 if (strict) revert BadCallTarget();
                 return false;
             }
-            (bool ok, bytes memory ret) = hook.call(cs[i].data);
+            (bool ok, bytes memory ret) = target.call(cs[i].data);
             if (!ok) {
                 if (strict) {
                     assembly ("memory-safe") {

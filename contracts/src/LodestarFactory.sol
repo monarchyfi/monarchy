@@ -7,6 +7,10 @@ import {IExile} from "./interfaces/IExile.sol";
 import {ISandfall} from "./interfaces/ISandfall.sol";
 import {ILodestar} from "./interfaces/ILodestar.sol";
 
+interface ILodestarToken {
+    function token() external view returns (address);
+}
+
 /// @title LodestarFactory
 /// @notice Deploys one Lodestar router per launchpad pool at an address anyone can predict from the token
 /// and quote. One factory per launchpad: everything launchpad specific comes from its fee-source adapter.
@@ -135,17 +139,38 @@ contract LodestarFactory {
         _deploy(p, t);
     }
 
-    /// @notice For a one-step launchpad where the creator handed the role to the predicted router before deploying
-    /// it: the role now sits at an address with no code and nothing on chain says who sent it, so `deploy` can't
-    /// tell the creator from anyone else. The owner deploys it with the settings the creator asks for, after
-    /// checking off chain who handed the role over.
+    /// @notice For a one-step launchpad where the creator's role went somewhere `deploy` can't recover it from:
+    /// - to the predicted router before it was deployed: the role sits at an address with no code;
+    /// - to another coin's router made here (a pasted address, two coins mixed up): that router can't hand back
+    ///   a role that isn't its own coin's.
+    /// Nothing on chain says who sent the role, so `deploy` can't tell the creator from anyone else. The owner
+    /// deploys the coin's router with the settings the creator asks for, after checking off chain who handed the
+    /// role over, and in the second case moves the role into it in the same transaction.
     function rescueDeploy(DeployParams calldata p, address steward) external returns (address lodestar) {
         if (msg.sender != owner) revert OnlyOwner();
         if (steward == address(0)) revert ZeroAddress();
         Target memory t = _target(p, steward);
         lodestar = t.lodestar;
-        if (t.twoStep || source.creator(p.token, t.poolId) != lodestar) revert NotStranded();
+        if (t.twoStep) revert NotStranded();
+        address holder = source.creator(p.token, t.poolId);
+        if (holder == lodestar) {
+            _deploy(p, t);
+            return lodestar;
+        }
+        if (!_isOtherCoinsRouter(holder, p.token)) revert NotStranded();
         _deploy(p, t);
+        ILodestar(holder).releaseForeignRole(p.token, lodestar);
+        if (source.creator(p.token, t.poolId) != lodestar) revert NotStranded();
+    }
+
+    /// @dev True when `holder` is a router this factory made for a different coin.
+    function _isOtherCoinsRouter(address holder, address token) internal view returns (bool) {
+        if (holder.code.length == 0) return false;
+        try ILodestarToken(holder).token() returns (address other) {
+            return other != token && lodestarOf[other] == holder;
+        } catch {
+            return false;
+        }
     }
 
     function _target(DeployParams calldata p, address steward) internal view returns (Target memory t) {

@@ -225,6 +225,7 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     error NoPendingRegistrar();
     error InvalidHarvest();
     error NoHarvest();
+    error HarvestPoolOnly();
 
     constructor() {
         owner = msg.sender;
@@ -417,7 +418,7 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     // ================================================================ locks
 
     /// @notice Lock ERC-20 tokens until `unlockAt` (rounded up to the hour). Pass a reward pool id to earn
-    /// that pool's rewards, or 0 for a plain lock.
+    /// that pool's rewards, or 0 for a plain lock. A coin with a harvest only takes locks in its harvest pool.
     function lockERC20(address asset, uint256 amount, uint64 unlockAt, uint256 poolId)
         external
         nonReentrant
@@ -426,6 +427,10 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         if (amount == 0) revert InvalidAmount();
         if (unlockAt <= block.timestamp) revert InvalidUnlock();
         if (poolId != 0 && _pool(poolId).stakeToken != asset) revert WrongStakeToken();
+        // a coin with a harvest pays dividends on all of Exile's balance of it, and the harvest gives them all to
+        // one pool, so a plain lock or a lock in another pool would earn them for that pool's lockers
+        uint256 harvestPool = harvestOf[asset].poolId;
+        if (harvestPool != 0 && poolId != harvestPool) revert HarvestPoolOnly();
         // an NFT collection pasted into the token path would be pulled with transferFrom(from, to, id) and
         // could never be withdrawn, so refuse anything that says it is ERC-721
         (bool isNft, bytes memory ret) =

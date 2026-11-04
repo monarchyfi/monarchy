@@ -145,8 +145,9 @@ for spec in "eleos $TST2255 none" "kleos $BULL v4" "boxa $CHUD none"; do
   send "$EXILE" "lockERC20(address,uint256,uint64,uint256)" "$coin" "$bal" "$unlock" "$pid" --private-key "$LOCKER_KEY"
 done
 
-# volume on all three coins, spread out so Eleos's hook sees a market and not one jump
-for _ in $(seq 1 10); do
+# volume on all three coins, spread out so Eleos's hook sees a market and not one jump. Twenty rounds so that
+# CHUD, whose creator gets the least of the tax, clears the keeper's 0.001 HYPE minimum
+for _ in $(seq 1 20); do
   for r in "${ROUTERS[@]}"; do
     read -r pad coin _ _ <<<"$r"
     buy "$pad" "$coin" 200000000000000000 "$DEAD" "$TRADER_KEY"
@@ -170,7 +171,7 @@ burnedBefore=$(call "$KLEOS_ROUTER" "totalBuybackTokensBurned()(uint256)" | num)
 echo "== 5b. keeper again, right after"
 second=$(RPC_URL=$RPC KEEPER_PRIVATE_KEY=$KEEPER_KEY tools/keeper-launchpads.sh "$FILE" 99901)
 echo "$second"
-if [ "$(grep -c "^distribute()" <<<"$second" || true)" -gt 1 ] || grep -q "^harvest" <<<"$second"; then
+if [ "$(grep -c "^distribute()" <<<"$second" || true)" -gt 1 ] || grep -q "^harvest brings" <<<"$second"; then
   echo "the second keeper run did more than route the buyback's own fee"
   exit 1
 fi

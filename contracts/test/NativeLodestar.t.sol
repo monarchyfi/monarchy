@@ -158,6 +158,62 @@ contract NativeLodestarTest is Test {
         factory2.rescueDeploy(_params(address(0)), dev);
     }
 
+    /// @dev Audit round 5, L-1: a one-step launchpad lets a creator send the role to any address, including
+    /// another coin's router. That router can't hand it back, so the owner deploys the coin's own router and moves
+    /// the role into it.
+    function test_roleSentToAnotherCoinsRouterIsRescued() public {
+        LodestarFactory.DeployParams memory pa = _params(address(0));
+        pa.creatorLockUntil = type(uint64).max; // a locked router still passes on a role that isn't its coin's
+        vm.prank(dev);
+        Lodestar a = Lodestar(payable(factory1.deploy(pa)));
+        vm.prank(dev);
+        hook.transferCreator(address(token), address(a));
+
+        MockDividendToken other = new MockDividendToken();
+        address dev2 = makeAddr("dev2");
+        hook.launch(address(other), dev2);
+        vm.prank(dev2);
+        hook.transferCreator(address(other), address(a)); // the wrong router
+        LodestarFactory.DeployParams memory pb = _params(address(0));
+        pb.token = address(other);
+        vm.prank(dev2);
+        vm.expectRevert(LodestarFactory.NotPoolCreator.selector);
+        factory1.deploy(pb);
+
+        // only the factory moves it, never the holding router's steward, and never the router's own role
+        vm.prank(dev);
+        vm.expectRevert(Lodestar.OnlyFactory.selector);
+        a.releaseForeignRole(address(other), dev);
+        vm.prank(address(factory1));
+        vm.expectRevert(Lodestar.SelfTransfer.selector);
+        a.releaseForeignRole(address(token), dev);
+        vm.prank(dev2);
+        vm.expectRevert(LodestarFactory.OnlyOwner.selector);
+        factory1.rescueDeploy(pb, dev2);
+
+        Lodestar b = Lodestar(payable(factory1.rescueDeploy(pb, dev2)));
+        (address predicted,) = factory1.predict(address(other), address(0));
+        assertEq(address(b), predicted);
+        assertEq(b.steward(), dev2);
+        assertTrue(b.isCreator(), "the coin's own router holds its role");
+        assertTrue(a.isCreator(), "the other router keeps its own");
+        assertEq(hook.creatorOf(address(token)), address(a));
+    }
+
+    function test_rescueRefusesARoleHeldByAnythingElse() public {
+        MockDividendToken other = new MockDividendToken();
+        hook.launch(address(other), makeAddr("dev2"));
+        LodestarFactory.DeployParams memory pb = _params(address(0));
+        pb.token = address(other);
+        // a plain wallet, or a contract that isn't one of this factory's routers
+        vm.expectRevert(LodestarFactory.NotStranded.selector);
+        factory1.rescueDeploy(pb, dev);
+        vm.prank(makeAddr("dev2"));
+        hook.transferCreator(address(other), address(swapper));
+        vm.expectRevert(LodestarFactory.NotStranded.selector);
+        factory1.rescueDeploy(pb, dev);
+    }
+
     function test_noListingDeskNoEnrolment() public {
         LodestarFactory.DeployParams memory p = _params(address(0));
         p.enrolListing = true;
