@@ -8,7 +8,7 @@ Please report security issues privately through GitHub's [private vulnerability 
 
 ## Scope
 
-- `contracts/src`: Lodestar, LodestarFactory, AscendSwapper, Exile, Sandfall and their libraries
+- `contracts/src`: Lodestar, LodestarFactory, AscendSwapper, Exile, Sandfall and their libraries, the fee-source adapters in `contracts/src/sources`, V4Swapper and V4PriceObserver
 - The deployment scripts in `contracts/script`
 
 Mocks under `contracts/src/mocks` and the website are out of scope for security reports, though bug reports are welcome as issues.
@@ -25,6 +25,10 @@ Four internal security reviews have run. Each finding was shown with a proof-of-
   - The site says when a forever lock can still move.
 
   Two Medium findings concern the upgrade path itself and are handled by design. On a live chain the factory owner is a multisig separate from every steward, planned as a 2-of-2 with one key held by the Ascend team. A newer Lodestar must also keep paying the old Exile pool and Team Treasury stream, so an upgrade doesn't leave lockers earning nothing until their locks end.
+
+## Not yet reviewed
+
+The Eleos, Kleos and Boxa integration (the fee-source adapters, native HYPE in Lodestar, Exile and Sandfall, the Exile dividend harvest and its registrars, one-step activation and `rescueDeploy`, V4Swapper and V4PriceObserver, and the mainnet scripts and keeper) is new since the reviews above. It is tested, including against the real launchpads on a mainnet fork, but hasn't had a security review yet; it needs one, with the third-party audit, before mainnet. [docs/launchpads.md](docs/launchpads.md) lists what the factory owner can do and the known limits.
 
 ## Design guarantees
 

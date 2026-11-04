@@ -4,10 +4,10 @@
 
 # Monarchy
 
-### Lock to earn on Ascend. Every token sets its own rules.
+### Lock to earn the fees. On Ascend, Eleos, Kleos and Boxa.
 
 [![CI](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml)
-[![Tests: 171 passing](https://img.shields.io/badge/Foundry-171%20tests%20passing-111111.svg)](contracts/test)
+[![Tests: 228 passing](https://img.shields.io/badge/Foundry-228%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
@@ -15,7 +15,7 @@
 
 **Holders who lock earn a share of every creator fee, more the longer they lock. Each creator decides how the rest is burned, bought back or streamed to the team, and every change happens in public. Monarchy takes nothing.**
 
-[Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
+[Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Eleos, Kleos and Boxa](docs/launchpads.md) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
 
 <img src="docs/img/site-home.png" alt="The Monarchy home page: four tabs around a crown along the top with the CA chip on the right, the name MONARCHY above a large spinning crown drawn in text characters, and Steal the Crown in gold with the line Lock to earn. The kingdom shares everything with those who stay. below it" width="840" />
 
@@ -31,6 +31,10 @@ On Ascend the creator role collects half of every 1% swap fee, in both the token
 
 - **Lock to earn.** Holding a token earns nothing on its own. Holders who lock it in Exile earn a share of every fee, by tier from Peasant (0.5x for a day) to Monarch (4x for a month), so rewards go to the people who stay, not to wallets that sell the next day.
 - **Your token, your rules.** Each creator sets the split between buyback and burn, lockers and the Team Treasury, where token-side fees go, the four lock tiers and how fast the treasury streams. Splits, routes and tiers stay adjustable, but only in public: every change waits 12 hours on chain where anyone can see it coming.
+
+### On Eleos, Kleos and Boxa
+
+The Uniswap v4 launchpads on Elysium mainnet already split each coin's tax between the creator, the holders and a buyback, so Monarchy doesn't offer them another split. It gives their holders a reason to lock: the creator hands the coin's creator role to a Lodestar, and the creator's share of the tax, paid in HYPE, goes to the holders who lock the coin in Exile (50% by default, by tier), with 20% bought back and burned and 30% streamed to the team. Locked coins don't give up the coin's own holder dividends either: Exile claims them and passes them on to the lockers. One router design serves all three through a small adapter per launchpad, tested against the real hooks on a mainnet fork. See [docs/launchpads.md](docs/launchpads.md) for the activation guide per launchpad, the fee rules and the mainnet runbook.
 
 ## Monarchy runs on Monarchy
 
@@ -49,17 +53,17 @@ On testnet, Sample Token (SMPL) stands in for MONARCHY with exactly this setup.
 
 ```mermaid
 flowchart LR
-    A[Ascend pool<br/>creator fees] --> L(Lodestar)
+    A[Launchpad pool<br/>creator fees] --> L(Lodestar)
     L -->|token side, default| E
     L -->|token side, if chosen| B[Burned]
-    L -->|quote, burn share| S[AscendSwapper] --> B
+    L -->|quote, burn share| S[AscendSwapper or V4Swapper] --> B
     L -->|quote, holder share| E[Exile<br/>3 day drip to lockers]
     L -->|quote, treasury share| T[Sandfall<br/>rolling Team Treasury stream]
 ```
 
 | | What it does |
 |---|---|
-| **Lodestar** | A fee router for one Ascend token. The creator launches on Ascend's own site and keeps the dev buy, then hands the token's *creator role* to its Lodestar. Anyone can call `distribute()`, and the team's keeper calls it every 3 hours so fees never pile up into one big payout: token-side fees are all paid to Exile lockers in the token itself (or, if the creator chooses, burned), and quote-side fees split by the creator's percentages into **buyback and burn**, **holder rewards** (Exile) and a **Team Treasury** (streamed through Sandfall). Ascend's listing set-aside stays off, so the creator's whole fee share reaches the router. |
+| **Lodestar** | A fee router for one token on Ascend, or on Eleos, Kleos or Boxa where the quote is native HYPE ([details](docs/launchpads.md)). The creator launches on the launchpad's own site and keeps the dev buy, then hands the token's *creator role* to its Lodestar. Anyone can call `distribute()`, and the team's keeper calls it every 3 hours so fees never pile up into one big payout: token-side fees are all paid to Exile lockers in the token itself (or, if the creator chooses, burned), and quote-side fees split by the creator's percentages into **buyback and burn**, **holder rewards** (Exile) and a **Team Treasury** (streamed through Sandfall). Ascend's listing set-aside stays off, so the creator's whole fee share reaches the router. |
 | **Exile** | Locks ERC-20s (including v2 LP), ERC-721s and ERC-1155s. Locks can be extended, never shortened, cancelled or transferred. ERC-20 locks earn holder rewards by tier, paid as a 3 day drip, and stop earning the second they unlock. |
 | **Sandfall** | Vesting streams (linear, with an optional cliff, or in daily, weekly or monthly steps) in any non-rebasing ERC-20 or native HYPE, each with a chart of what unlocks by when. The creator decides at creation whether a stream can be cancelled, and the site badges it. Rolling streams back Lodestar's Team Treasury. |
 
@@ -80,8 +84,9 @@ No lock, no rewards. With four holders each locking 10,000 tokens and fees dripp
 - **No sweep.** There is no rescue or withdraw function. Funds can only go to the burn address, Exile, Sandfall or the swapper. Locked tokens and vesting streams can only go to their owners.
 - **Slow changes.** Split, swapper and slippage changes, and Exile tier changes, wait behind a 12 hour timelock and expire if not executed within 7 days after it. Anyone can carry a change out once the wait ends, the steward can cancel it before then, and a new proposal restarts the wait. The token's Lodestar page and the Garden show every pending change with its countdown. Settings chosen at activation apply immediately.
 - **Locked router.** At activation the creator can lock the creator role to the Lodestar forever (the default on the site and in the activation script), so the router can't be swapped out; without it, the steward can lock it later. Even locked, it can move to the same token's router on a newer Monarchy factory: the factory owner names that factory, the steward proposes the move, and anyone can carry it out after 7 days' notice. On a live chain the factory owner is a multisig, separate from every steward, so no single key can start a move; the deploy script refuses a plain wallet there. For mainnet the plan is a 2-of-2 with one key held by the Ascend team. On testnet the owner is still the deploy wallet. A different successor named meanwhile stops it. A lock can't be placed while a hand-off is pending.
-- **Guarded buybacks.** The minimum output is the stricter of a floor at Ascend's on-chain EMA price and one at spot, less the pool fee and a slippage allowance (default 10%, min 1%, max 20%); spot alone is never trusted. Each buy spends at most 0.5% of the pool's quote depth (and waits while the pool has no active liquidity to measure), so it moves the price less than a sandwich pays in fees, and buys are at least 30 minutes apart, so calling `distribute` many times in one block can't push the whole reserve through between a buy and a sell. Bigger amounts and skipped buys wait in reserve and go out in pieces; holders and treasury are still paid. Every buyback must actually deliver its minimum to the burn address. The swapper is chosen by the steward behind the timelock, and a dishonest one could keep the margin above that minimum, so swapper changes are worth watching.
-- **Front-run safe activation.** Only the pool's current creator can deploy its Lodestar, at an address derived from the pool id.
+- **Guarded buybacks.** The minimum output is the stricter of a floor at Ascend's on-chain EMA price (on Eleos, Kleos and Boxa, Monarchy's own 30 minute time-weighted average) and one at spot, less the pool fee or the coin's buy tax and a slippage allowance (default 10%, min 1%, max 20%); spot alone is never trusted. Each buy spends at most 0.5% of the pool's quote depth (and waits while the pool has no active liquidity to measure), so it moves the price less than a sandwich pays in fees, and buys are at least 30 minutes apart, so calling `distribute` many times in one block can't push the whole reserve through between a buy and a sell. Bigger amounts and skipped buys wait in reserve and go out in pieces; holders and treasury are still paid. Every buyback must actually deliver its minimum to the burn address. The swapper is chosen by the steward behind the timelock, and a dishonest one could keep the margin above that minimum, so swapper changes are worth watching.
+- **Front-run safe activation.** Only the pool's current creator can deploy its Lodestar, at an address derived from the pool id. On the one-step launchpads (Eleos, Kleos) the creator deploys first and hands the role over after; a role sent to the address before the router existed can only be finished by the factory owner.
+- **Launchpad adapters.** Everything launchpad specific sits in a stateless adapter that only answers views and lists calls; the router sends those calls itself, only to its own hook, with no value. A coin names its own hook, and the adapter only accepts hooks its owner (the multisig) registered; the registry only grows. Exile's dividend harvest only takes three fixed claim shapes, set by the factory at activation.
 - **Fuzz and invariant tested.** Random sequences of locks, payouts, claims, top-ups, cancels, fees and failed buybacks check that Exile stays solvent and never pays out more than it received, that every Sandfall stream stays fully backed, and that every unit of quote a Lodestar handles ends up burned, locked, streamed or held in its buyback reserve.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and [SECURITY.md](SECURITY.md) for the security reviews and how to report an issue. The contracts have had four internal security reviews but no third-party audit yet.
@@ -119,13 +124,17 @@ Sample Token (SMPL) is launched on Ascend's live testnet launchpad with MONARCHY
 ## Repository layout
 
 ```
-contracts/src        Lodestar, LodestarFactory, AscendSwapper, Exile, Sandfall, interfaces, mocks
-contracts/test       Foundry tests, including a full mock-Ascend integration test
-contracts/script     DeployMocks, DeployCore, LaunchOnAscend, ActivateLodestar, DemoFlow
-deployments/         <chainId>.json written by the scripts and read by the website
+contracts/src        Lodestar, LodestarFactory, AscendSwapper, Exile, Sandfall, V4Swapper, V4PriceObserver,
+                     sources/ (the Ascend, Eleos, Kleos and Boxa adapters), interfaces, mocks
+contracts/test       Foundry tests, including a full mock-Ascend integration test and fork/ (the real
+                     Eleos, Kleos and Boxa hooks on an Elysium mainnet fork)
+contracts/script     DeployMocks, DeployCore, LaunchOnAscend, ActivateLodestar, DemoFlow; for Eleos, Kleos
+                     and Boxa: DeployLaunchpads, FinishLaunchpads, ActivateLaunchpad
+deployments/         <chainId>.json written by the scripts and read by the website; launchpads/<chainId>.json
+                     for Eleos, Kleos and Boxa
 web/                 Vite + React + wagmi site (landing page, Kingdom overview, Lodestar, Exile, Sandfall)
-docs/                Architecture notes and the demo script
-tools/               demo-local.sh, export-abis.mjs, offline solc shim
+docs/                Architecture notes, the Eleos, Kleos and Boxa guide, and the demo script
+tools/               demo-local.sh, keeper scripts, rehearse-launchpads.sh, export-abis.mjs, offline solc shim
 ```
 
 ## Quickstart
@@ -198,14 +207,19 @@ If buybacks through the Infinity vault misbehave, Lodestar keeps the buyback sha
 
 The keeper (`.github/workflows/distribute.yml`) calls `distribute()` every 3 hours from a wallet that holds only gas money, set as the `KEEPER_PRIVATE_KEY` Actions secret. Each run checks that `RPC_URL` serves chain 99801, lets `cast` estimate the gas, and fails when the receipt shows a revert, so a broken distribute is a red run rather than a green one. When Exile's reward pool is more than 6 hours behind (after an outage), the run first catches it up with `poke`, one call's worth of hours at a time, so the payouts inside `distribute()` stay light. If `distribute()` fails or a holder payout is parked, it catches up again and tries once more.
 
+### Eleos, Kleos and Boxa on Elysium mainnet
+
+`DeployLaunchpads`, then `FinishLaunchpads` 12 hours later, deploy the shared core, an adapter, a V4Swapper per pool manager and a factory per launchpad; creators activate with `ActivateLaunchpad`, and `tools/keeper-launchpads.sh` keeps every router distributing and harvesting. `tools/rehearse-launchpads.sh` runs all of it on a local fork first. The steps, the owner's powers and the per-launchpad details are in [docs/launchpads.md](docs/launchpads.md).
+
 ## Status and roadmap
 
 | | |
 |---|---|
 | **Working** | Lodestar, Exile and Sandfall live on Elysium testnet with two demo tokens (USDC and stock quotes); burns, buybacks and token rewards to lockers proven on Ascend's pools; web app for all three at monarchy.fi, with the Garden, an analytics page listing every lock, stream and router; docs at docs.monarchy.fi; CI on every change |
+| **Built, not deployed** | Eleos, Kleos and Boxa support: native HYPE routing, a dividend harvest in Exile, Uniswap v4 buybacks, and mainnet deploy, activation and keeper scripts, tested against the real launchpads on a mainnet fork and rehearsed end to end on a local one |
 | **In progress** | A testnet redeploy with the latest security review fixes |
-| **Before launch** | Third-party security audit, the upgrade multisig shared with the Ascend team, mainnet deploy, Monarchy token launch on Ascend |
-| **Next** | kHYPE treasury option, TWAP buybacks, Ascend NFT holder bonus in Exile, other launchpads, an indexer for history and APR charts |
+| **Before launch** | Third-party security audit, the upgrade multisig shared with the Ascend team, mainnet deploy (Eleos, Kleos and Boxa after Elysium's public launch on November 9), Monarchy token launch on Ascend |
+| **Next** | Website support for Eleos, Kleos and Boxa coins, kHYPE treasury option, TWAP buybacks, Ascend NFT holder bonus in Exile, an indexer for history and APR charts |
 
 Everything works with Ascend as it is today: a creator launches, then hands over the creator role in two steps. An option on Ascend's launch form to pick a Lodestar up front would make it one step.
 
