@@ -11,14 +11,15 @@ interface IExile {
         bytes32 label;
     }
 
-    /// @notice Start a reward pool for lockers of `stakeToken`, paid in `rewardToken`. Tiers must be
-    /// sorted by minDuration ascending. `admin` may change tiers behind a 12 hour timelock.
+    /// @notice Start a reward pool for lockers of `stakeToken`, paid in `rewardToken` (address(0) = native HYPE).
+    /// Tiers must be sorted by minDuration ascending. `admin` may change tiers behind a 12 hour timelock.
     function createPool(address stakeToken, address rewardToken, Tier[] calldata tiers, address admin)
         external
         returns (uint256 poolId);
 
-    /// @notice Add rewards to a pool. They drip out over 3 days. Anyone may call.
-    function notifyReward(uint256 poolId, uint256 amount) external;
+    /// @notice Add rewards to a pool. They drip out over 3 days. Anyone may call. A native pool takes exactly
+    /// `amount` as msg.value.
+    function notifyReward(uint256 poolId, uint256 amount) external payable;
 
     /// @notice Add rewards paid in the pool's stake token. They drip out over 3 days on the same points,
     /// next to the reward-token stream. Anyone may call.
@@ -32,4 +33,12 @@ interface IExile {
 
     /// @notice Drop a queued tier table (admin only).
     function cancelTiers(uint256 poolId) external;
+
+    /// @notice Name the native pool that receives the HYPE dividends every lock of `stakeToken` earns, and the
+    /// claim that pays them: `selector(exile)` on the token itself, or `selector(token, exile)` on `target` (the
+    /// coin's hook). Registrars only (Monarchy factories).
+    function setHarvest(address stakeToken, uint256 poolId, address target, bytes4 selector) external;
+
+    /// @notice Claim the dividends Exile's balance of `stakeToken` earned and pay them to its harvest pool.
+    function harvest(address stakeToken) external returns (uint256 amount);
 }

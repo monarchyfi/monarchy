@@ -15,6 +15,7 @@ import {IListingDesk} from "../src/interfaces/IListingDesk.sol";
 import {ICLPoolManager} from "../src/interfaces/IInfinity.sol";
 import {ISandfall} from "../src/interfaces/ISandfall.sol";
 import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
+import {IFeeSource} from "../src/interfaces/IFeeSource.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @dev A stand-in for a newer Monarchy factory: a router only asks it where this token's router lives.
@@ -132,9 +133,7 @@ contract LodestarTest is MonarchyFixture {
         vm.expectRevert(LodestarFactory.ZeroAddress.selector);
         new LodestarFactory(
             address(impl),
-            IAscendLaunchpad(address(launchpad)),
-            IListingDesk(address(desk)),
-            ICLPoolManager(address(pool)),
+            IFeeSource(address(ascendSource)),
             exile,
             ISandfall(address(sandfall)),
             address(swapper),
@@ -154,7 +153,7 @@ contract LodestarTest is MonarchyFixture {
         // naming a swapper explicitly still works
         p.cfg.swapper = address(mockSwapper);
         vm.prank(dev);
-        Lodestar l = Lodestar(factory.deploy{gas: 5_000_000}(p));
+        Lodestar l = Lodestar(payable(factory.deploy{gas: 5_000_000}(p)));
         assertEq(l.config().swapper, address(mockSwapper));
     }
 

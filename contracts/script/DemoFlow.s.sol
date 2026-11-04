@@ -29,8 +29,8 @@ contract DemoFlow is BaseScript {
         usdc = MockERC20(d.quote);
         monarch = MockERC20(d.token);
         swapper = AscendSwapper(d.swapper);
-        Lodestar l = Lodestar(d.lodestar);
-        Exile exile = Exile(d.exile);
+        Lodestar l = Lodestar(payable(d.lodestar));
+        Exile exile = Exile(payable(d.exile));
         uint256 exilePool = l.exilePoolId();
 
         uint256 devKey = _deployerKey();

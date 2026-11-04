@@ -2,6 +2,10 @@ name: Distribute
 
 # Keeper: calls distribute() on the Lodestar in deployments/99801.json every 3 hours, so fees reach
 # holders in small, steady payouts and never pile up into one big payout worth timing a lock for.
+# A second job does the same on Elysium mainnet for every router the Eleos, Kleos and Boxa factories in
+# deployments/launchpads/99901.json have made, and harvests the dividends Exile earns on locked coins
+# (tools/keeper-launchpads.sh). It has its own key (MAINNET_KEEPER_PRIVATE_KEY) and RPC (the MAINNET_RPC_URL
+# repository variable) and is skipped until both are set and the deployments file exists.
 # The team pays the gas from a keeper wallet that only holds gas money. Set its key as the
 # KEEPER_PRIVATE_KEY secret; without it the job is skipped. distribute() is permissionless, so anyone
 # can also call it in between.
@@ -33,13 +37,12 @@ concurrency:
   group: distribute
   cancel-in-progress: false
 
-env:
-  RPC_URL: ${{ vars.RPC_URL || 'https://testnet-rpc.elysium.kinetiq.xyz' }}
-  CHAIN_ID: "99801"
-
 jobs:
   distribute:
     runs-on: ubuntu-latest
+    env:
+      RPC_URL: ${{ vars.RPC_URL || 'https://testnet-rpc.elysium.kinetiq.xyz' }}
+      CHAIN_ID: "99801"
     steps:
       - name: Check for the keeper key
         id: key
@@ -72,3 +75,56 @@ jobs:
         env:
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
         run: tools/keeper-distribute.sh deployments/99801.json "$CHAIN_ID"
+
+  distribute-mainnet:
+    runs-on: ubuntu-latest
+    env:
+      RPC_URL: ${{ vars.MAINNET_RPC_URL }}
+      CHAIN_ID: "99901"
+      FILE: deployments/launchpads/99901.json
+    steps:
+      - name: Check for the mainnet keeper key and RPC
+        id: key
+        env:
+          KEEPER_PRIVATE_KEY: ${{ secrets.MAINNET_KEEPER_PRIVATE_KEY }}
+        run: |
+          if [ -n "${KEEPER_PRIVATE_KEY// /}" ] && [ -n "${RPC_URL// /}" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "MAINNET_KEEPER_PRIVATE_KEY or MAINNET_RPC_URL is not set; skipping."
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.key.outputs.has_key == 'true'
+      - name: Check for the deployments file
+        id: file
+        if: steps.key.outputs.has_key == 'true'
+        run: |
+          if [ -f "$FILE" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+            echo "$FILE does not exist yet; skipping."
+          fi
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        if: steps.file.outputs.deployed == 'true'
+        with:
+          version: v1.7.1
+          cache: false
+      - name: Check that MAINNET_RPC_URL serves Elysium mainnet
+        if: steps.file.outputs.deployed == 'true'
+        run: |
+          got=$(cast chain-id --rpc-url "$RPC_URL")
+          if [ "$got" != "$CHAIN_ID" ]; then
+            echo "::error::MAINNET_RPC_URL answers chain id '$got', expected $CHAIN_ID. Not sending anything."
+            exit 1
+          fi
+      - name: distribute() and harvest on every router
+        if: steps.file.outputs.deployed == 'true'
+        env:
+          KEEPER_PRIVATE_KEY: ${{ secrets.MAINNET_KEEPER_PRIVATE_KEY }}
+          # optional repository variables; unset keeps the keeper's defaults
+          MIN_ROUTE_WEI: ${{ vars.MAINNET_MIN_ROUTE_WEI }}
+          MIN_ROUTE_TOKENS: ${{ vars.MAINNET_MIN_ROUTE_TOKENS }}
+          MIN_HARVEST_WEI: ${{ vars.MAINNET_MIN_HARVEST_WEI }}
+        run: tools/keeper-launchpads.sh "$FILE" "$CHAIN_ID"
