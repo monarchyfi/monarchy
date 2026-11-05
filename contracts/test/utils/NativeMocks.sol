@@ -99,7 +99,7 @@ contract MockNativeSource is IFeeSource {
     }
 
     function pendingCreator(address token, bytes32) external view returns (address) {
-        return mode == Handover.TwoStep ? hookC.pendingOf(token) : address(0);
+        return mode != Handover.OneStep ? hookC.pendingOf(token) : address(0);
     }
 
     function owed(address token, bytes32, address who) external view returns (uint256, uint256) {
@@ -144,7 +144,7 @@ contract MockNativeSource is IFeeSource {
     }
 
     function transferOutCalls(address token, bytes32, address next) external view returns (Call[] memory) {
-        if (mode == Handover.TwoStep) return _one(abi.encodeCall(MockNativeHook.propose, (token, next)));
+        if (mode != Handover.OneStep) return _one(abi.encodeCall(MockNativeHook.propose, (token, next)));
         if (next == address(0)) return new Call[](0);
         return _one(abi.encodeCall(MockNativeHook.transferCreator, (token, next)));
     }

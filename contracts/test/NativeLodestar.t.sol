@@ -32,6 +32,8 @@ contract NativeLodestarTest is Test {
     MockNativeSource internal twoStep;
     LodestarFactory internal factory1; // one-step launchpad
     LodestarFactory internal factory2; // two-step launchpad
+    MockNativeSource internal delayed;
+    LodestarFactory internal factory3; // two-step with a wait before accepting (Ascend v5)
     MockDividendToken internal token;
     MockNativeSwapper internal swapper;
 
@@ -47,8 +49,10 @@ contract NativeLodestarTest is Test {
         hook = new MockNativeHook();
         oneStep = new MockNativeSource(hook, IFeeSource.Handover.OneStep);
         twoStep = new MockNativeSource(hook, IFeeSource.Handover.TwoStep);
+        delayed = new MockNativeSource(hook, IFeeSource.Handover.TwoStepDelayed);
         factory1 = _factory(oneStep);
         factory2 = _factory(twoStep);
+        factory3 = _factory(delayed);
         token = new MockDividendToken();
         hook.launch(address(token), dev);
         swapper = new MockNativeSwapper(token);
@@ -125,6 +129,45 @@ contract NativeLodestarTest is Test {
         assertEq(address(l), predicted);
         assertTrue(l.isCreator());
         assertEq(hook.pendingOf(address(token)), address(0));
+    }
+
+    /// @dev Ascend v5: the router can't accept in the deploy, so it deploys with the proposal pending and anyone
+    /// accepts later. A lock asked for at deploy is set already, since the pending hand-off is to the router.
+    function test_delayedDeployLeavesTheAcceptForLater() public {
+        (address predicted,) = factory3.predict(address(token), address(0));
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.TransferCreatorFirst.selector);
+        factory3.deploy(_params(address(0)));
+        vm.prank(dev);
+        hook.propose(address(token), predicted);
+        LodestarFactory.DeployParams memory p = _params(address(0));
+        p.creatorLockUntil = type(uint64).max;
+        vm.prank(dev);
+        Lodestar l = Lodestar(payable(factory3.deploy(p)));
+        assertEq(address(l), predicted);
+        assertFalse(l.isCreator(), "not accepted in the deploy");
+        assertEq(hook.pendingOf(address(token)), predicted);
+        assertEq(l.creatorLockedUntil(), type(uint64).max);
+        vm.prank(makeAddr("anyone"));
+        l.acceptCreator();
+        assertTrue(l.isCreator());
+        vm.prank(dev);
+        vm.expectRevert(Lodestar.CreatorRoleIsLocked.selector);
+        l.transferCreatorOut(makeAddr("next"));
+    }
+
+    function test_delayedLockRefusedWhileHandingOut() public {
+        (address predicted,) = factory3.predict(address(token), address(0));
+        vm.prank(dev);
+        hook.propose(address(token), predicted);
+        vm.prank(dev);
+        Lodestar l = Lodestar(payable(factory3.deploy(_params(address(0)))));
+        l.acceptCreator();
+        vm.prank(dev);
+        l.transferCreatorOut(makeAddr("next"));
+        vm.prank(dev);
+        vm.expectRevert(Lodestar.CreatorTransferPending.selector);
+        l.lockCreatorRole(uint64(block.timestamp + 365 days));
     }
 
     function test_roleSentBeforeDeployNeedsTheOwner() public {
@@ -308,13 +351,24 @@ contract NativeLodestarTest is Test {
 
     function test_buybackWaitsWhenTheTaxIsTooHigh() public {
         Lodestar l = _oneStep(address(swapper));
-        oneStep.setMarket(uint160(1 << 96), uint160(1 << 96), 1e24, 501);
+        oneStep.setMarket(uint160(1 << 96), uint160(1 << 96), 1e24, 1101);
         hook.accrue{value: 10 ether}(address(token));
         vm.expectEmit(address(l));
         emit Lodestar.BuybackSkipped(0, 0);
         l.distribute();
         assertEq(l.buybackReserve(), 2 ether);
         assertEq(l.totalBuybackTokensBurned(), 0);
+    }
+
+    /// @dev Ascend v5 pools charge up to 10% plus a builder's 1%: their buybacks run, the floor net of the fee.
+    function test_buybackRunsOnAnElevenPercentPool() public {
+        Lodestar l = _oneStep(address(swapper));
+        oneStep.setMarket(uint160(1 << 96), uint160(1 << 96), 1e24, 1100);
+        assertEq(l.quoteMinOut(1 ether, 300), 0.86 ether);
+        hook.accrue{value: 10 ether}(address(token));
+        l.distribute();
+        assertEq(l.totalBuybackQuote(), 2 ether);
+        assertEq(l.buybackReserve(), 0);
     }
 
     function test_buybackWaitsWithoutAnAverage() public {

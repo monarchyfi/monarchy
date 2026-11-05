@@ -1,0 +1,221 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ForkBase} from "./ForkBase.sol";
+import {Lodestar} from "../../src/Lodestar.sol";
+import {LodestarFactory} from "../../src/LodestarFactory.sol";
+import {AscendV5Swapper} from "../../src/AscendV5Swapper.sol";
+import {AscendV5FeeSource} from "../../src/sources/AscendV5FeeSource.sol";
+import {IFeeSource} from "../../src/interfaces/IFeeSource.sol";
+import {IAscendV5Launchpad, IAscendV5Escrow} from "../../src/interfaces/IAscendV5.sol";
+
+interface IWHYPE {
+    function deposit() external payable;
+}
+
+/// @notice Lodestar on Ascend v5 (ascendlaunch.xyz) against the real launchpad, escrows and pools on an Elysium
+/// mainnet fork. Coins are Vanilla launches (their escrow pays a wallet), quoted in WHYPE.
+contract AscendV5ForkTest is ForkBase {
+    address internal constant LAUNCHPAD = 0xe0dEF4221b9840a610D4e7d55812a79A6431a8eC;
+    address internal constant ESCROW_FACTORY = 0x63f6a8A8d0257c0363251a50cdE8A8b1046e4d19;
+    address internal constant POOL_MANAGER = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
+    address internal constant BURN_SINK = 0x9F0b0e3B362937b07Cd1E869b50687961e0c7741;
+    address internal constant WHYPE = 0xbA876237B0F021A6c6D852d6c26E107997cC5E81;
+
+    // 1% fee, the coin sorts after WHYPE (currency1)
+    address internal constant COIN_1 = 0xFae8A55Ed42E18F00CB70e46476402e630296C32;
+    // 3% fee, the coin sorts before WHYPE (currency0)
+    address internal constant COIN_3 = 0x086f8850FBC3101c4Bdc6932c3D5f639cb34D2DF;
+    address internal constant ESCROW_3 = 0x5d14d7391A46BEc222e88889b3e4d7F8B98C93f3;
+    // 10% fee
+    address internal constant COIN_10 = 0xB8c3116D0565F11CAa9474F5DB7c8dC991B9F462;
+
+    AscendV5FeeSource internal source;
+    AscendV5Swapper internal v5swapper;
+    LodestarFactory internal factory;
+
+    function setUp() public {
+        if (!_fork()) return;
+        source = new AscendV5FeeSource(IAscendV5Launchpad(LAUNCHPAD), BURN_SINK);
+        v5swapper = new AscendV5Swapper(IAscendV5Launchpad(LAUNCHPAD));
+        factory = _factory(IFeeSource(address(source)));
+        vm.prank(trader);
+        IWHYPE(WHYPE).deposit{value: 5_000 ether}();
+        vm.prank(trader);
+        IERC20(WHYPE).approve(address(v5swapper), type(uint256).max);
+    }
+
+    function _escrow(address coin) internal view returns (IAscendV5Escrow) {
+        (, address hook,) = source.resolve(coin, WHYPE);
+        return IAscendV5Escrow(hook);
+    }
+
+    function _v5params(address coin, address swapper)
+        internal
+        view
+        returns (LodestarFactory.DeployParams memory p)
+    {
+        p = _params(coin, swapper);
+        p.quote = WHYPE;
+    }
+
+    /// @dev Propose the predicted router, deploy it (no accept yet), wait out the escrow's 48 hours, accept.
+    function _activate(address coin, address swapper) internal returns (Lodestar l) {
+        IAscendV5Escrow e = _escrow(coin);
+        address dev = e.recipient();
+        (address predicted,) = factory.predict(coin, WHYPE);
+        vm.prank(dev);
+        e.proposeRecipient(predicted);
+        vm.prank(dev);
+        l = Lodestar(payable(factory.deploy(_v5params(coin, swapper))));
+        assertEq(address(l), predicted);
+        assertFalse(l.isCreator(), "not before the wait");
+        skip(2 days);
+        l.acceptCreator();
+        assertTrue(l.isCreator(), "the router is the escrow's recipient");
+        assertEq(e.pendingRecipient(), address(0));
+    }
+
+    function _buy(address coin, uint256 whypeIn, address to) internal returns (uint256 out) {
+        (bytes32 id,,) = source.resolve(coin, WHYPE);
+        vm.prank(trader);
+        out = v5swapper.buyExactIn(id, whypeIn, 0, to);
+    }
+
+    function _trade(address coin, uint256 each, uint256 n) internal {
+        for (uint256 i; i < n; ++i) {
+            _buy(coin, each, locker);
+            skip(2 minutes);
+        }
+        skip(20 minutes);
+    }
+
+    function test_resolveAndViews() public view {
+        (bytes32 id, address hook, bool tokenIs0) = source.resolve(COIN_3, WHYPE);
+        assertEq(hook, ESCROW_3);
+        assertTrue(tokenIs0);
+        assertEq(IAscendV5Escrow(hook).poolId(), id);
+        assertEq(source.swapCostBps(COIN_3, id), 300);
+        assertEq(source.burnSink(COIN_3), BURN_SINK);
+        assertEq(uint8(source.handover()), uint8(IFeeSource.Handover.TwoStepDelayed));
+        (uint160 spot, uint160 ema, uint128 liq) = source.prices(COIN_3, id);
+        assertGt(spot, 0);
+        assertGt(ema, 0);
+        assertGt(liq, 0);
+        (,, bool tokenIs0b) = source.resolve(COIN_1, WHYPE);
+        assertFalse(tokenIs0b);
+        (bytes32 id10,,) = source.resolve(COIN_10, WHYPE);
+        assertEq(source.swapCostBps(COIN_10, id10), 1000);
+    }
+
+    function test_nativeAndUnknownPairsRefused() public {
+        vm.expectRevert(AscendV5FeeSource.QuoteUnsupported.selector);
+        source.resolve(COIN_3, address(0));
+        vm.expectRevert(AscendV5FeeSource.UnknownPool.selector);
+        source.resolve(COIN_3, address(0xB0B));
+    }
+
+    function test_proposalRequiredFirst() public {
+        address dev = _escrow(COIN_3).recipient();
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.TransferCreatorFirst.selector);
+        factory.deploy(_v5params(COIN_3, address(0)));
+    }
+
+    function test_acceptWaitsForTheEscrowsDelay() public {
+        IAscendV5Escrow e = _escrow(COIN_3);
+        address dev = e.recipient();
+        (address predicted,) = factory.predict(COIN_3, WHYPE);
+        vm.prank(dev);
+        e.proposeRecipient(predicted);
+        LodestarFactory.DeployParams memory p = _v5params(COIN_3, address(0));
+        p.creatorLockUntil = type(uint64).max;
+        vm.prank(dev);
+        Lodestar l = Lodestar(payable(factory.deploy(p)));
+        assertEq(l.creatorLockedUntil(), type(uint64).max, "locked while the hand-off to it is pending");
+        vm.expectRevert();
+        l.acceptCreator();
+        skip(2 days);
+        l.acceptCreator();
+        assertTrue(l.isCreator());
+        // the lock now holds: the steward can't hand the role on
+        vm.prank(l.steward());
+        vm.expectRevert(Lodestar.CreatorRoleIsLocked.selector);
+        l.transferCreatorOut(makeAddr("elsewhere"));
+    }
+
+    /// @dev Credits earned before the hand-off stay with the old recipient; later ones are routed.
+    function test_claimAndDistribute() public {
+        IAscendV5Escrow e = _escrow(COIN_1);
+        address dev = e.recipient();
+        Lodestar l = _activate(COIN_1, address(0));
+        uint256 devCredits = e.claimable(dev);
+        _trade(COIN_1, 20 ether, 10);
+        uint256 lockerCoins = IERC20(COIN_1).balanceOf(locker);
+        _lock(COIN_1, l.exilePoolId(), lockerCoins);
+
+        uint256 before = IERC20(WHYPE).balanceOf(address(l));
+        l.distribute();
+        uint256 routed = l.totalHoldersQuote() + l.totalTreasuryQuote() + l.buybackReserve();
+        assertGt(routed, 0, "the escrow paid the router");
+        assertEq(before, 0);
+        assertEq(e.claimable(address(l)), 0);
+        assertGe(e.claimable(dev), devCredits, "the dev keeps what they earned before");
+        assertEq(l.totalHoldersQuote(), routed * HOLDERS_BPS / 10_000);
+        assertEq(IERC20(WHYPE).balanceOf(address(l)), l.buybackReserve());
+
+        skip(3 days);
+        uint256[] memory ids = exile.lockIdsOf(locker);
+        uint256 got = IERC20(WHYPE).balanceOf(locker);
+        vm.prank(locker);
+        exile.claimRewards(ids[0]);
+        assertApproxEqRel(IERC20(WHYPE).balanceOf(locker) - got, l.totalHoldersQuote(), 1e15);
+    }
+
+    function _buybackRuns(address coin) internal {
+        Lodestar l = _activate(coin, address(v5swapper));
+        _trade(coin, 20 ether, 10);
+        uint256 sinkBefore = IERC20(coin).balanceOf(BURN_SINK);
+        l.distribute();
+        // Ascend's EMA only moves on swaps, and after the big buys above it trails spot; a few small trades over
+        // the next two hours let it catch up, as normal trading would. Until then the floor skips the buyback.
+        for (uint256 i; i < 20; ++i) {
+            skip(6 minutes);
+            _buy(coin, 0.1 ether, locker);
+        }
+        l.distribute();
+        assertGt(l.totalBuybackTokensBurned(), 0, "bought back through the real pool");
+        assertEq(IERC20(coin).balanceOf(BURN_SINK) - sinkBefore, l.totalBuybackTokensBurned());
+    }
+
+    function test_buybackCoinIsCurrency1() public {
+        _buybackRuns(COIN_1);
+    }
+
+    function test_buybackCoinIsCurrency0() public {
+        _buybackRuns(COIN_3);
+    }
+
+    /// @dev A 10% pool is under the 11% cap, so its buyback runs, net of the fee.
+    function test_buybackOnATenPercentCoin() public {
+        _buybackRuns(COIN_10);
+    }
+
+    function test_handBackOut() public {
+        Lodestar l = _activate(COIN_3, address(0));
+        address next = makeAddr("next");
+        vm.prank(l.steward());
+        l.transferCreatorOut(next);
+        IAscendV5Escrow e = _escrow(COIN_3);
+        assertEq(e.pendingRecipient(), next);
+        vm.prank(l.steward());
+        l.transferCreatorOut(address(0));
+        assertEq(e.pendingRecipient(), address(0), "proposing no one cancels");
+    }
+
+    function test_swapperRefusesOtherPools() public {
+        vm.expectRevert(AscendV5Swapper.UnknownPool.selector);
+        v5swapper.keyOf(bytes32(uint256(1)));
+    }
+}
