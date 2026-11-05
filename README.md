@@ -7,7 +7,7 @@
 ### Lock to earn the fees. On Ascend, Eleos, Kleos and Boxa.
 
 [![CI](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml)
-[![Tests: 231 passing](https://img.shields.io/badge/Foundry-231%20tests%20passing-111111.svg)](contracts/test)
+[![Tests: 234 passing](https://img.shields.io/badge/Foundry-234%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
@@ -27,10 +27,14 @@
 
 Ascend has no token, and its NFT is capped at 500. People who want a piece of Ascend usually reach for the launchpad's own token, and here there isn't one. Monarchy aims to be that token: a liquid coin whose trading fees flow back to the holders who lock it, built on the same tools it offers every other Ascend project.
 
-On Ascend the creator role collects half of every 1% swap fee, in both the token and the quote asset. Without Monarchy that money sits in one wallet, holders earn nothing for holding, and promises about buybacks or vesting can't be checked on chain. Monarchy replaces those promises with contracts, built on two ideas:
+On Ascend the creator role collects a share of every swap fee: half of a 1% fee on the testnet launchpad, and on Ascend's mainnet launchpad (v5) a fee the creator picks from 1% to 10%, paid in the quote asset. Without Monarchy that money sits in one wallet, holders earn nothing for holding, and promises about buybacks or vesting can't be checked on chain. Monarchy replaces those promises with contracts, built on two ideas:
 
 - **Lock to earn.** Holding a token earns nothing on its own. Holders who lock it in Exile earn a share of every fee, by tier from Peasant (0.5x for a day) to Monarch (4x for a month), so rewards go to the people who stay, not to wallets that sell the next day.
 - **Your token, your rules.** Each creator sets the split between buyback and burn, lockers and the Team Treasury, where token-side fees go, the four lock tiers and how fast the treasury streams. Splits, routes and tiers stay adjustable, but only in public: every change waits 12 hours on chain where anyone can see it coming.
+
+### On Ascend's mainnet launchpad (v5)
+
+Ascend v5 gives each coin a creator escrow. A Vanilla coin's creator proposes its Lodestar as the escrow's recipient, and 48 hours later anyone completes the hand-off; from then on every fee the escrow releases is routed. Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
 
 ### On Eleos, Kleos and Boxa
 
