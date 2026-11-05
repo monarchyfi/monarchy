@@ -14,6 +14,21 @@ interface IWHYPE {
     function deposit() external payable;
 }
 
+interface IEscrowLifecycle {
+    function startHold() external;
+    function graduate() external;
+    function poke() external;
+    function settle() external;
+}
+
+interface ICtoRegistryV5 {
+    function owner() external view returns (address);
+    function NOTICE() external view returns (uint256);
+    function submitRequest(bytes32 poolId, string calldata evidence) external returns (uint256 id);
+    function review(uint256 id, bool approve, string calldata decision) external;
+    function accept(uint256 id) external;
+}
+
 /// @notice Lodestar on Ascend v5 (ascendlaunch.xyz) against the real launchpad, escrows and pools on an Elysium
 /// mainnet fork. Coins are Vanilla launches (their escrow pays a wallet), quoted in WHYPE.
 contract AscendV5ForkTest is ForkBase {
@@ -217,5 +232,140 @@ contract AscendV5ForkTest is ForkBase {
     function test_swapperRefusesOtherPools() public {
         vm.expectRevert(AscendV5Swapper.UnknownPool.selector);
         v5swapper.keyOf(bytes32(uint256(1)));
+    }
+
+    /// @dev on a pool that opted in to Ascend's community takeovers (most v5 launches), Ascend's CTO
+    /// registry can move the escrow's recipient away from the router, creator lock or not.
+    function test_communityTakeoverOverridesTheLock() public {
+        IAscendV5Escrow e = _escrow(COIN_10);
+        ICtoRegistryV5 reg = ICtoRegistryV5(e.ctoRegistry());
+        assertTrue(address(reg) != address(0), "COIN_10 opted in to takeovers");
+        (bytes32 pid,,) = source.resolve(COIN_10, WHYPE);
+        assertEq(source.takeoverRegistry(pid), address(reg));
+        address dev = e.recipient();
+        (address predicted,) = factory.predict(COIN_10, WHYPE);
+        vm.prank(dev);
+        e.proposeRecipient(predicted);
+        LodestarFactory.DeployParams memory p = _v5params(COIN_10, address(0));
+        p.creatorLockUntil = type(uint64).max;
+        vm.prank(dev);
+        Lodestar l = Lodestar(payable(factory.deploy(p)));
+        skip(2 days);
+        l.acceptCreator();
+        assertTrue(l.creatorRoleLocked());
+        _trade(COIN_10, 20 ether, 5);
+        uint256 credit = e.claimable(address(l));
+        assertGt(credit, 0);
+
+        address applicant = makeAddr("applicant");
+        (bytes32 id,,) = source.resolve(COIN_10, WHYPE);
+        vm.prank(applicant);
+        uint256 req = reg.submitRequest(id, "https://x.com/someone/status/1234567890");
+        vm.prank(reg.owner());
+        reg.review(req, true, "https://x.com/ascend/status/1");
+        skip(reg.NOTICE() + 1);
+        vm.prank(applicant);
+        reg.accept(req);
+        assertEq(e.recipient(), applicant, "the takeover moved the role despite the forever lock");
+        assertFalse(l.creatorRoleLocked());
+        assertGe(e.claimable(address(l)), credit, "credits the router earned stay claimable");
+        l.distribute();
+        assertEq(e.claimable(address(l)), 0, "and the router still routes them");
+        assertEq(l.creatorLockedUntil(), type(uint64).max);
+    }
+
+    /// @dev a lock set at deploy binds nothing until the router accepts; the creator can still cancel.
+    function test_lockBindsOnlyOnceAccepted() public {
+        IAscendV5Escrow e = _escrow(COIN_3);
+        address dev = e.recipient();
+        (address predicted,) = factory.predict(COIN_3, WHYPE);
+        vm.prank(dev);
+        e.proposeRecipient(predicted);
+        LodestarFactory.DeployParams memory p = _v5params(COIN_3, address(0));
+        p.creatorLockUntil = type(uint64).max;
+        vm.prank(dev);
+        Lodestar l = Lodestar(payable(factory.deploy(p)));
+        assertEq(l.creatorLockedUntil(), type(uint64).max);
+        assertFalse(l.creatorRoleLocked(), "not binding while the creator can still cancel");
+        vm.prank(dev);
+        e.proposeRecipient(address(0));
+        skip(2 days);
+        vm.expectRevert(Lodestar.CreatorNotPending.selector);
+        l.acceptCreator();
+        assertFalse(l.isCreator());
+        assertEq(e.recipient(), dev, "the creator kept the role");
+    }
+
+    /// @dev fees held before the hand-off (below Ascend's graduation line) are paid to whoever is the
+    /// recipient when the coin graduates.
+    function test_heldFeesGoToTheRecipientAtGraduation() public {
+        IAscendV5Escrow e = _escrow(COIN_3);
+        address dev = e.recipient();
+        _trade(COIN_3, 20 ether, 5);
+        uint256 heldBefore = e.held();
+        uint256 devBefore = e.claimable(dev);
+        assertGt(heldBefore, 0, "fees held before the hand-off");
+        Lodestar l = _activate(COIN_3, address(0));
+        uint256 routerBefore = e.claimable(address(l));
+        // push the coin over the line and keep it there
+        for (uint256 i; i < 12; ++i) {
+            _buy(COIN_3, 300 ether, locker);
+            skip(10 minutes);
+            try IEscrowLifecycle(address(e)).startHold() {} catch {}
+            try IEscrowLifecycle(address(e)).graduate() {} catch {}
+        }
+        assertEq(e.phase(), 1, "graduated");
+        assertEq(e.held(), 0);
+        assertEq(e.claimable(dev), devBefore, "the old recipient gets none of the held fees");
+        assertGt(
+            e.claimable(address(l)) - routerBefore, heldBefore, "the router gets them, with what it earned"
+        );
+    }
+
+    /// @dev once the router holds the role, the old recipient has no escrow call left that moves the role
+    /// or the router's credits.
+    function test_oldRecipientHasNoPowerLeft() public {
+        IAscendV5Escrow e = _escrow(COIN_1);
+        address dev = e.recipient();
+        Lodestar l = _activate(COIN_1, address(0));
+        _trade(COIN_1, 20 ether, 5);
+        uint256 credit = e.claimable(address(l));
+        bytes[7] memory calls = [
+            abi.encodeWithSignature("proposeRecipient(address)", dev),
+            abi.encodeWithSignature("reassign(address)", dev),
+            abi.encodeWithSignature("proposeBuilder(address)", dev),
+            abi.encodeWithSignature("setListing(address,uint256)", dev, 1 ether),
+            abi.encodeWithSignature("takeListing(address,uint256)", dev, 1),
+            abi.encodeWithSignature("withdrawTo(address)", dev),
+            abi.encodeWithSignature("acceptBuilder()")
+        ];
+        // only withdrawTo goes through, and it pays the old recipient's own credit
+        for (uint256 i; i < calls.length; ++i) {
+            vm.prank(dev);
+            (bool ok,) = address(e).call(calls[i]);
+            assertEq(ok, i == 5);
+        }
+        assertEq(e.recipient(), address(l));
+        assertEq(e.pendingRecipient(), address(0));
+        assertEq(e.claimable(address(l)), credit);
+    }
+
+    /// @dev a proposal does not expire, and proposing again restarts the 48 hours.
+    function test_proposalDoesNotExpireAndCanRestart() public {
+        IAscendV5Escrow e = _escrow(COIN_3);
+        address dev = e.recipient();
+        (address predicted,) = factory.predict(COIN_3, WHYPE);
+        vm.prank(dev);
+        e.proposeRecipient(predicted);
+        uint256 first = e.recipientReadyAt();
+        vm.prank(dev);
+        Lodestar l = Lodestar(payable(factory.deploy(_v5params(COIN_3, address(0)))));
+        skip(1 days);
+        vm.prank(dev);
+        e.proposeRecipient(predicted);
+        assertEq(e.recipientReadyAt(), first + 1 days, "proposing again restarts the wait");
+        skip(30 days);
+        l.acceptCreator();
+        assertTrue(l.isCreator(), "still acceptable a month later");
     }
 }

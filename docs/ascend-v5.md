@@ -35,7 +35,21 @@ and the chain on November 5, 2026.
    (`Handover.TwoStepDelayed`); a creator lock asked for here is already set.
 3. After 48 hours, anyone calls `Lodestar.acceptCreator()`. From then on the escrow pays the router.
 
-Credits the creator earned before step 3 stay theirs. Quote assets are ERC-20s: a HYPE pair is quoted in WHYPE.
+Credits already paid out to the creator before step 3 stay theirs (claim them with `escrow.claim(wallet)`).
+Fees still held below the graduation line are not: the escrow pays them to whoever is the recipient when the coin
+graduates, so after step 3 that is the router. Quote assets are ERC-20s: a HYPE pair is quoted in WHYPE.
+
+A creator lock set in step 2 only binds once step 3 has happened; until then the creator can cancel the proposal.
+`Lodestar.creatorRoleLocked()` is true only while the router holds the role and the lock runs.
+
+### Community takeovers
+
+Most v5 launches (366 of 575 as of November 5, 2026) opted in to Ascend's community takeovers. On those pools
+Ascend's `CtoRegistryV5` can replace the escrow's recipient: anyone files a request, Ascend's owner approves it, and
+after a 48 hour notice the applicant becomes the recipient. This works on a router too, creator lock or not: the lock
+only stops the steward. Credits the router already earned stay claimable and are still routed, but held fees and
+all future fees go to the new recipient. `AscendV5FeeSource.takeoverRegistry(poolId)` returns the registry, or zero
+when the pool did not opt in, so the site can show this next to the lock.
 
 ## Routing and buybacks
 
@@ -45,7 +59,8 @@ the pool's fees reach its escrow, then claims the router's credit from the escro
 Buybacks go through `AscendV5Swapper`, which rebuilds the pool key from the pool's escrow and swaps exact quote in
 through the launch pool, coins straight to Ascend's BurnSink (v5 coins refuse `0x…dEaD`). The swap cost the floor
 allows for is the pool's own `currentFee`. Lodestar now tries buybacks on pools costing up to 11% (it was 5%), so
-every v5 fee level, builder fee included, gets its buyback. Ascend's EMA only moves on swaps, so after a sharp move
+every v5 fee level, builder fee included, gets its buyback. The limit is shared by every launchpad, so Boxa, Kleos
+and Eleos buybacks now also go through at a buy tax of up to 11%. Ascend's EMA only moves on swaps, so after a sharp move
 the floor skips buybacks until trading brings the average back in line.
 
 ## Tests

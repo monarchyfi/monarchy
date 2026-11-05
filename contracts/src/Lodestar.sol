@@ -33,6 +33,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// is not tried; the buyback share waits in reserve.
     /// Ascend v5 pools charge a fixed 1% to 10% plus up to 1% to a builder, so this allows up to 11%: the minimum
     /// output already allows for the fee, and a higher fee only makes a sandwich of the small capped buys cost more.
+    /// It applies to every launchpad: a Boxa, Kleos or Eleos buy tax of up to 11% is now bought through too.
     uint256 public constant MAX_SWAP_COST_BPS = 1_100;
     uint256 public constant MIN_SLIPPAGE_BPS = 100;
     uint256 public constant MAX_SLIPPAGE_BPS = 2_000;
@@ -511,7 +512,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// @notice Promise the creator role stays with this router until `until` (type(uint64).max = forever).
     /// Can only be extended, and not while a hand-off away from this router is pending (it could be accepted after
     /// locking). A hand-off to this router still waiting to be accepted (Ascend v5's 48 hours) is fine: the lock
-    /// binds from the moment the router holds the role.
+    /// binds from the moment the router holds the role, and until then the creator can still cancel, so read
+    /// `creatorRoleLocked()` rather than this value alone.
     function lockCreatorRole(uint64 until) external onlyStewardOrFactory {
         if (until <= creatorLockedUntil || until <= block.timestamp) revert NotExtending();
         address pending = source.pendingCreator(address(token), poolId);
@@ -640,6 +642,14 @@ contract Lodestar is ILodestar, ReentrancyGuard {
 
     function isCreator() external view returns (bool) {
         return source.creator(address(token), poolId) == address(this);
+    }
+
+    /// @notice True while the creator lock actually binds: this router holds the role and the lock hasn't run out.
+    /// `creatorLockedUntil` alone can be set before the role arrives (Ascend v5's 48 hour wait), when the creator
+    /// can still cancel the hand-off. A launchpad's own override (an approved Ascend v5 community takeover) can
+    /// still move the role; see the adapter's `takeoverRegistry`.
+    function creatorRoleLocked() external view returns (bool) {
+        return block.timestamp < creatorLockedUntil && source.creator(address(token), poolId) == address(this);
     }
 
     // ================================================================ internals

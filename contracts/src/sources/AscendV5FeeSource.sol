@@ -18,7 +18,11 @@ import {V4State} from "../libraries/V4State.sol";
 ///     them itself from `poke`, which every distribute calls first; the router then sends `escrow.claim(router)`.
 ///     There is no token-side fee on v5.
 /// Only Vanilla coins can switch: on Holder Rewards, Buyback and Custom mix coins the recipient is Ascend's seat
-/// contract, which never proposes a new recipient. Credits earned before the handover stay with the old recipient.
+/// contract, which never proposes a new recipient. Credits paid out before the handover stay with the old
+/// recipient, but fees still held (below the graduation line) go to whoever is the recipient when the coin
+/// graduates: hand-off moves the creator's held fees to the router, and a later hand-out moves the router's.
+/// Pools that opted in to Ascend's community takeovers (`takeoverRegistry` not zero) can have the recipient
+/// replaced by Ascend's CTO registry after its review and notice, whatever this router's creator lock says.
 /// Stateless.
 contract AscendV5FeeSource is IFeeSource {
     /// @dev Uniswap v4's dynamic-fee flag and Ascend's tick spacing: every v5 launch pool's key.
@@ -80,6 +84,12 @@ contract AscendV5FeeSource is IFeeSource {
     /// @dev v5's listing elections run on the escrow, not through a desk this router can enrol with.
     function desk() external pure returns (address) {
         return address(0);
+    }
+
+    /// @notice Ascend's community-takeover registry for the pool, or address(0) when the pool did not opt in. When
+    /// set, an approved takeover replaces the escrow's recipient (this router included) after the registry's notice.
+    function takeoverRegistry(bytes32 poolId) external view returns (address) {
+        return escrowOf(poolId).ctoRegistry();
     }
 
     function creator(address, bytes32 poolId) external view returns (address) {
