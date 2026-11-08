@@ -2,15 +2,16 @@
 pragma solidity ^0.8.24;
 
 /// @notice What a Lodestar needs to know about the launchpad that holds its token's creator role. One adapter
-/// per launchpad (Ascend, Boxa, Kleos, Eleos) answers views and builds the calls the router sends itself, since
-/// a launchpad only answers the address that holds the creator role. A router stores its adapter once, at
-/// initialize, and only ever sends a call to the pool's `hook` (the contract that holds the role), never with
-/// value, so an adapter cannot turn a router into a generic caller.
+/// per launchpad (Ascend, Boxa, Kleos, Eleos, ElysPump) answers views and builds the calls the router sends
+/// itself, since a launchpad only answers the address that holds the creator role. A router stores its adapter
+/// once, at initialize, and only ever sends a call to the pool's `hook` (the contract that holds the role), never
+/// with value, so an adapter cannot turn a router into a generic caller.
 interface IFeeSource {
     /// @dev TwoStep: the creator proposes the router and the router accepts (Ascend testnet, Boxa). OneStep: the
-    /// creator hands the role over in one call and there is nothing to accept (Kleos, Eleos). TwoStepDelayed: like
-    /// TwoStep, but the router can only accept after a wait (Ascend v5, 48 hours), so the factory deploys the router
-    /// without accepting and anyone calls `Lodestar.acceptCreator()` once the wait is over.
+    /// creator hands the role over in one call and there is nothing to accept (Kleos, Eleos, ElysPump).
+    /// TwoStepDelayed: like TwoStep, but the router can only accept after a wait (Ascend v5, 48 hours), so the
+    /// factory deploys the router without accepting and anyone calls `Lodestar.acceptCreator()` once the wait is
+    /// over.
     enum Handover {
         TwoStep,
         OneStep,
@@ -51,8 +52,9 @@ interface IFeeSource {
     function holdersShareBps(address token, bytes32 poolId) external view returns (uint256);
 
     /// @notice How a holder claims the dividends the token pays by balance, for Exile's harvest: the holder calls
-    /// `selector(holder)` on the token when `target` is the token, or `selector(token, holder)` on `target` (the
-    /// coin's hook) otherwise. (0, 0) = the token pays none, or the adapter doesn't know how to claim them.
+    /// `selector(holder)` on the token when `target` is the token (or just `claim()`, which pays the caller), or
+    /// `selector(token, holder)` on `target` (the coin's hook) otherwise. (0, 0) = the token pays none, or the
+    /// adapter doesn't know how to claim them.
     function dividendClaim(address token) external view returns (address target, bytes4 selector);
 
     /// @notice Where buybacks and token-side burns go: the address the token already counts as burned.

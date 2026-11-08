@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dress rehearsal of the Eleos, Kleos and Boxa rollout on a local anvil fork of Elysium mainnet. Sends nothing to
+# Dress rehearsal of the Eleos, Kleos, Boxa and ElysPump rollout on a local anvil fork of Elysium mainnet. Sends nothing to
 # the real chain: anvil forks it into a local node and every transaction goes there.
 #
 #   ELYSIUM_RPC_URL=https://rpc.eleos.fun [FORK_BLOCK=358639] tools/rehearse-launchpads.sh
@@ -7,12 +7,12 @@
 # 1. DeployLaunchpads with anvil's first key, an anvil EOA standing in for the multisig (ALLOW_EOA_OWNER=true).
 # 2. Twelve hours later FinishLaunchpads, and the stand-in multisig accepts Exile.
 # 3. One coin per launchpad, each with a holder share so the harvest runs: TST2255 (Eleos), BULL (Kleos hook A),
-#    CHUD (Boxa pairs hook). Each coin's creator role is moved (impersonated) to an anvil key, which then runs
-#    ActivateLaunchpad as the creator would. The Kleos router gets the V4Swapper (SWAPPER=v4, phase 2); the other
-#    two keep the buyback share in reserve (phase 1).
+#    CHUD (Boxa pairs hook), MIX (ElysPump v2 hook). Each coin's creator role is moved (impersonated) to an anvil
+#    key, which then runs ActivateLaunchpad as the creator would. The Kleos router gets the V4Swapper (SWAPPER=v4,
+#    phase 2); the others keep the buyback share in reserve (phase 1).
 # 4. A locker buys and locks each coin in Exile, traders make volume, and tools/keeper-launchpads.sh runs.
 # 5. Checks that every router routed fees, that the Kleos router bought back and burned and the others kept the
-#    buyback share, that Exile harvested dividends on all three, and that a second keeper run right after leaves
+#    buyback share, that Exile harvested dividends on all four, and that a second keeper run right after leaves
 #    the phase 1 routers alone and doesn't buy back again.
 # The deployments file goes to deployments/launchpads/rehearsal.json (git-ignored) and the anvil log to
 # $TMPDIR. Needs forge, cast, anvil and jq. KEEP_ANVIL=1 leaves the node running at the end, and
@@ -44,6 +44,7 @@ TREASURY=0x000000000000000000000000000000000000bEEF
 TST2255=0x1EaDE08E6BEf1ac50bac8A70e230A26286be3a85
 BULL=0xF3bC1443b3aC94FcD77A9808Cc51EbE6007f38bd
 CHUD=0xee522C896A72dbE25Ca02d6a56C9E0E41D9FD27E
+MIX=0x949a66AC7d58eC0a64B1414A9471F1083143FdAB
 
 anvil --fork-url "$ELYSIUM_RPC_URL" --fork-block-number "$FORK_BLOCK" --port "$PORT" --silent >"$LOG" 2>&1 &
 ANVIL=$!
@@ -96,6 +97,8 @@ take_role() {
   if [ "$pad" = "boxa" ]; then
     send "$hook" "proposeCreator(bytes32,address)" "$id" "$CREATOR" --unlocked --from "$real"
     send "$hook" "acceptCreator(bytes32)" "$id" --private-key "$CREATOR_KEY"
+  elif [ "$pad" = "elyspump" ]; then
+    send "$hook" "setFeeReceiver(address,address)" "$coin" "$CREATOR" --unlocked --from "$real"
   else
     send "$hook" "transferCreator(address,address)" "$coin" "$CREATOR" --unlocked --from "$real"
   fi
@@ -121,9 +124,9 @@ buy() {
 }
 
 ROUTERS=()
-# the Kleos router buys back through the deployment's V4Swapper (phase 2); the other two keep the buyback share
-# in reserve (phase 1)
-for spec in "eleos $TST2255 none" "kleos $BULL v4" "boxa $CHUD none"; do
+# the Kleos router buys back through the deployment's V4Swapper (phase 2); the others keep the buyback share in
+# reserve (phase 1)
+for spec in "eleos $TST2255 none" "kleos $BULL v4" "boxa $CHUD none" "elyspump $MIX none"; do
   read -r pad coin swap <<<"$spec"
   echo "== 3. $pad: activate $coin"
   take_role "$pad" "$coin"
@@ -145,7 +148,7 @@ for spec in "eleos $TST2255 none" "kleos $BULL v4" "boxa $CHUD none"; do
   send "$EXILE" "lockERC20(address,uint256,uint64,uint256)" "$coin" "$bal" "$unlock" "$pid" --private-key "$LOCKER_KEY"
 done
 
-# volume on all three coins, spread out so Eleos's hook sees a market and not one jump. Twenty rounds so that
+# volume on all four coins, spread out so Eleos's hook sees a market and not one jump. Twenty rounds so that
 # CHUD, whose creator gets the least of the tax, clears the keeper's 0.001 HYPE minimum
 for _ in $(seq 1 20); do
   for r in "${ROUTERS[@]}"; do
@@ -198,6 +201,6 @@ done
 harvested=$(cast logs --from-block "$FORK_BLOCK" --address "$EXILE" "Harvested(address indexed,uint256 indexed,uint256,bool)" \
   --rpc-url "$RPC" --json | jq length)
 echo "Exile harvests: $harvested"
-[ "$harvested" -ge 3 ] || ok=0
+[ "$harvested" -ge 4 ] || ok=0
 rm -f "$FILE"
 if [ "$ok" = 1 ]; then echo "rehearsal passed"; else echo "rehearsal FAILED"; exit 1; fi

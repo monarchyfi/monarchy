@@ -8,7 +8,9 @@ import {
   iAscendV5EscrowAbi,
   iAscendV5LaunchpadAbi,
   iAscendV5SeatAbi,
+  elysPumpFeeSourceAbi,
   iBoxaHookAbi,
+  iElysPumpHookAbi,
   iEleosHookAbi,
   iKleosHookAbi,
   lodestarAbi,
@@ -43,7 +45,7 @@ const ONE_STEP = 1;
 
 type Choice = "auto" | PadKey;
 
-/** The Lodestar page on a chain with Eleos, Kleos, Boxa and Ascend v5: paste a coin, the page finds its launchpad (or
+/** The Lodestar page on a chain with Eleos, Kleos, Boxa, Ascend v5 and ElysPump: paste a coin, the page finds its launchpad (or
  * the creator picks it), then shows its router or the activation steps that launchpad needs. */
 export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
   usePageTitle("Lodestar");
@@ -123,7 +125,7 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
   );
 }
 
-type Handover = { pad: string; how: string; wait: "instant" | "none" | "48 hours" | "not supported" };
+type Handover = { pad: string; how: string; wait: "instant" | "none" | "48 hours" };
 
 /** How the router takes over a coin's creator fees on each launchpad, and how long that takes. */
 const HANDOVERS: Record<PadKey, Handover[]> = {
@@ -138,13 +140,19 @@ const HANDOVERS: Record<PadKey, Handover[]> = {
       wait: "48 hours",
     },
   ],
+  elyspump: [
+    {
+      pad: "ElysPump",
+      how: "Activate, which creates the router, then make the router the coin's fee receiver from your wallet. Only coins that pay their fee receiver a share can be activated.",
+      wait: "instant",
+    },
+  ],
 };
-const ELYSPUMP: Handover = { pad: "ElysPump", how: "Not on Monarchy yet. Its own fee wallet change is instant too.", wait: "not supported" };
-const WAIT_TONE = { instant: "green", none: "green", "48 hours": "amber", "not supported": "grey" } as const;
+const WAIT_TONE = { instant: "green", none: "green", "48 hours": "amber" } as const;
 
 /** The launchpads side by side, for a creator who hasn't pasted a coin yet: only Ascend has a wait. */
 function HandoverTable({ list, canLaunch }: { list: { info: PadInfo }[]; canLaunch: boolean }) {
-  const rows = [...list.flatMap(({ info }) => HANDOVERS[info.key].filter((r) => canLaunch || r.wait !== "none")), ELYSPUMP];
+  const rows = list.flatMap(({ info }) => HANDOVERS[info.key].filter((r) => canLaunch || r.wait !== "none"));
   return (
     <Card title="How each launchpad hands over">
       <p className="muted small">
@@ -184,21 +192,24 @@ type Found = {
   router?: Address;
   predicted?: Address;
   poolId?: Hex;
-  /** the pair's quote: native HYPE (ZERO) on Eleos, Kleos and Boxa, the ERC-20 the pool was found with on Ascend */
+  /** the pair's quote: native HYPE (ZERO) on Eleos, Kleos, Boxa and ElysPump, the ERC-20 the pool was found with on Ascend */
   quote: Address;
   /** the coin trades through a hook this launchpad's adapter knows, whatever it is quoted in */
   onHook: boolean;
+  /** ElysPump: a HYPE-paired coin that pays its fee receiver nothing, so there is nothing for a router to route */
+  noReceiverShare: boolean;
   /** the network's answer for the router address disagrees with the one worked out from the deployments file */
   mismatch: boolean;
 };
 
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-type Probe = { i: number; kind: "of" | "predict" | "hook"; quote: Address };
+type Probe = { i: number; kind: "of" | "predict" | "hook" | "share"; quote: Address };
 
 /** The reads that place a coin: per launchpad its router (`lodestarOf`) and `predict`, which only the coin's own
- * launchpad answers without reverting. Eleos, Kleos and Boxa are asked for the HYPE pair plus `hookOf`, which a coin
- * on a known hook answers even when it is quoted in something else; Ascend is asked for each of its quote assets. */
+ * launchpad answers without reverting. Eleos, Kleos, Boxa and ElysPump are asked for the HYPE pair plus `hookOf`,
+ * which a coin on a known hook answers even when it is quoted in something else; ElysPump also for the coin's
+ * receiver share, which says why `predict` refused a HYPE-paired coin. Ascend is asked for each of its quote assets. */
 function probesOf(list: { info: PadInfo }[]): Probe[] {
   return list.flatMap(({ info }, i): Probe[] =>
     info.quotes
@@ -207,6 +218,7 @@ function probesOf(list: { info: PadInfo }[]): Probe[] {
           { i, kind: "of", quote: ZERO },
           { i, kind: "predict", quote: ZERO },
           { i, kind: "hook", quote: ZERO },
+          ...(info.key === "elyspump" ? [{ i, kind: "share" as const, quote: ZERO }] : []),
         ],
   );
 }
@@ -220,6 +232,7 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
       const { pad } = list[i];
       if (kind === "of") return { address: pad.factory, abi: lodestarFactoryAbi, functionName: "lodestarOf", args: [token] } as const;
       if (kind === "predict") return { address: pad.factory, abi: lodestarFactoryAbi, functionName: "predict", args: [token, quote] } as const;
+      if (kind === "share") return { address: pad.source, abi: elysPumpFeeSourceAbi, functionName: "receiverShareBps", args: [token] } as const;
       return { address: pad.source, abi: v4FeeSourceAbi, functionName: "hookOf", args: [token] } as const;
     }),
     query: POLL.query,
@@ -231,6 +244,7 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
     const of = mine.find(({ p }) => p.kind === "of")?.res;
     const pr = mine.find(({ p, res }) => p.kind === "predict" && res.status === "success");
     const hk = mine.find(({ p }) => p.kind === "hook")?.res;
+    const share = mine.find(({ p }) => p.kind === "share")?.res;
     const router = of?.status === "success" && isSet(of.result as Address) ? (of.result as Address) : undefined;
     const p = pr?.res.status === "success" ? (pr.res.result as readonly [Address, Hex]) : undefined;
     // the address the role goes to is never the RPC's word: derive it from the deployments file and the pool id, and
@@ -242,7 +256,8 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
     const expected = poolId ? routerAddress(pads.lodestarImpl, pad.factory, poolId) : undefined;
     const mismatch =
       !!expected && (!same(p?.[0], expected) || (!!router && !same(router, expected)) || (!!localId && localId.toLowerCase() !== p?.[1].toLowerCase()));
-    return { info, pad, router, predicted: expected, poolId, quote: pr?.p.quote ?? ZERO, onHook: hk?.status === "success", mismatch };
+    const noReceiverShare = share?.status === "success" && share.result === 0n;
+    return { info, pad, router, predicted: expected, poolId, quote: pr?.p.quote ?? ZERO, onHook: hk?.status === "success", noReceiverShare, mismatch };
   });
   // the RPC failing every read looks like "on no launchpad"; say so instead
   if (results.every((x) => x.status === "failure" && !/revert/i.test(String(x.error))))
@@ -256,6 +271,7 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
   const target = choice === "auto" ? hit : found.find((f) => f.info.key === choice);
   if (!target) {
     const quoted = found.find((f) => f.onHook);
+    if (quoted?.noReceiverShare) return <NoReceiverShare name={quoted.info.name} />;
     return (
       <Card>
         <Empty title={quoted ? `On ${quoted.info.name}, but not paired with HYPE` : `Not found on ${padNames(list)}`}>
@@ -267,6 +283,7 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
     );
   }
   if (!target.router && !target.predicted) {
+    if (target.noReceiverShare) return <NoReceiverShare name={target.info.name} />;
     return (
       <Card>
         <Empty title={`${target.info.name} doesn't know this coin`}>
@@ -306,6 +323,19 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
       )}
       <PadRouterOrActivate pads={pads} f={target} token={token} />
     </>
+  );
+}
+
+/** An ElysPump coin launched with a fee receiver share of 0: its fees go to the platform, its holders and its own
+ * buybacks, so a router would receive nothing. The share is fixed at launch. */
+function NoReceiverShare({ name }: { name: string }) {
+  return (
+    <Card>
+      <Empty title="This coin pays its fee receiver nothing">
+        It's on {name}, but it was launched with a fee receiver share of 0%: its trading fees go to {name}, its holders and its own
+        buybacks, so a Lodestar would have nothing to route. The shares are fixed at launch, so this coin can't be activated.
+      </Empty>
+    </Card>
   );
 }
 
@@ -353,6 +383,8 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
   const hook = r.data?.[5][0];
   // Eleos holds a coin's unpaid creator fees per coin, so they would move with the role: offer to pay them out first
   const eleos = info.key === "eleos";
+  // ElysPump calls the creator role the coin's fee receiver
+  const elyspump = info.key === "elyspump";
   const el = useReadContracts({
     allowFailure: false,
     contracts: [
@@ -360,6 +392,14 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
       { address: hook, abi: iEleosHookAbi, functionName: "book", args: [token] },
     ],
     query: { enabled: eleos && !!hook, ...POLL.query },
+  });
+  // ElysPump: the fee receiver's share of each trade's fee, after the platform's 30%
+  const share = useReadContract({
+    address: pad.source,
+    abi: elysPumpFeeSourceAbi,
+    functionName: "receiverShareBps",
+    args: [token],
+    query: { enabled: elyspump, ...POLL.query },
   });
   const owed = useReadContract({
     ...src,
@@ -423,13 +463,15 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
   const eleosDue = eleos && !!el.data?.[0][0];
   const eleosOwed = eleos ? (el.data?.[1].creatorOwed ?? 0n) : 0n;
   const owedQuote = owed.data?.[1] ?? 0n;
-  const youOnly = !you ? "Only the coin's creator can do this" : undefined;
+  const youOnly = !you ? (elyspump ? "Only the coin's fee receiver can do this" : "Only the coin's creator can do this") : undefined;
 
   const deployStep = (
     <>
       <p className="muted small">
         Creates the router, its Exile reward pool and its Sandfall treasury stream{twoStep ? ", and accepts the role," : ""} in one transaction.
-        {holdersBps > 0n ? ` ${sym ?? "The coin"} pays its holders ${Number(holdersBps) / 100}% of the tax; Exile claims that for the coins locked in it and passes it on to lockers.` : ""}
+        {holdersBps > 0n
+          ? ` ${sym ?? "The coin"} pays its holders ${pct(elyspump ? (holdersBps * 7n) / 10n : holdersBps)} of the ${elyspump ? "fee" : "tax"}; Exile claims that for the coins locked in it and passes it on to lockers.`
+          : ""}
       </p>
       <ActivationSettings s={s} tokenRoute={false} />
       <h5>Buyback and burn</h5>
@@ -513,20 +555,26 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
       });
     steps.push({ title: "Activate", done: deployed, body: deployStep });
     steps.push({
-      title: "Hand the creator role to the router",
+      title: elyspump ? "Make the router the coin's fee receiver" : "Hand the creator role to the router",
       done: handedOver,
       body: (
         <>
           <p className="muted small">
             On {info.name}'s hook, once the router exists (never before: a role sent to an empty address can only be recovered by Monarchy).
-            The router earns from the moment the role arrives.{info.key === "kleos" ? " Fees you earned before stay yours to claim on Kleos." : ""}
+            The router earns from the moment the role arrives.
+            {info.key === "kleos" || elyspump ? ` Fees you earned before stay yours to claim on ${info.name}.` : ""}
           </p>
           <TxButton
             headroom
             disabledReason={youOnly ?? (!deployed ? "Activate first" : handedOver ? "Done" : undefined)}
-            request={() => hook && { address: hook, abi: info.key === "kleos" ? iKleosHookAbi : iEleosHookAbi, functionName: "transferCreator", args: [token, predicted] }}
+            request={() =>
+              hook &&
+              (elyspump
+                ? { address: hook, abi: iElysPumpHookAbi, functionName: "setFeeReceiver", args: [token, predicted] }
+                : { address: hook, abi: info.key === "kleos" ? iKleosHookAbi : iEleosHookAbi, functionName: "transferCreator", args: [token, predicted] })
+            }
           >
-            Hand over creator role
+            {elyspump ? "Make the router the fee receiver" : "Hand over creator role"}
           </TxButton>
           <RouterCheck predicted={predicted} />
         </>
@@ -538,9 +586,10 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
     <Card title="Activate Lodestar" right={<Badge tone="grey">{info.name}</Badge>}>
       <div className="summary">
         <Row k="Coin" v={<>{sym && <b className="text">{sym}</b>} <Addr address={token} /></>} />
-        <Row k={`Creator on ${info.name}`} v={<><Addr address={creator} /> {you && <Badge tone="green">you</Badge>}</>} />
+        <Row k={`${elyspump ? "Fee receiver" : "Creator"} on ${info.name}`} v={<><Addr address={creator} /> {you && <Badge tone="green">you</Badge>}</>} />
         <Row k="Router address" v={<><Addr address={predicted} /> {deployed && <Badge tone="green">deployed</Badge>}</>} />
         <Row k="Hook" v={<Addr address={hook} />} />
+        {elyspump && share.data !== undefined && <Row k="The router's share of each trade's fee" v={pct((share.data * 7n) / 10n)} />}
       </div>
       {notReady && <p className="warn small">Monarchy is still finishing its setup on {info.name}. Activations open within a day of launch.</p>}
       <ol className="steps">

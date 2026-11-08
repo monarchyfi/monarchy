@@ -185,6 +185,7 @@ contract MockNativeSwapper is INativeBuybackSwapper {
 
 /// @notice A coin that pays holders HYPE dividends inside itself, Eleos and Kleos style: `claimFor(holder)` pushes a
 /// holder's dividends to the holder (anyone may call), `claimRewards(holder)` pays them only when the holder calls.
+/// ElysPump style, `claim()` pays the caller's.
 contract MockDividendToken is MockERC20 {
     mapping(address => uint256) public dividendOf;
     bool public broken;
@@ -206,6 +207,10 @@ contract MockDividendToken is MockERC20 {
     function claimRewards(address holder) external {
         require(msg.sender == holder, "holder only");
         _pay(holder);
+    }
+
+    function claim() external returns (uint256) {
+        return _pay(msg.sender);
     }
 
     function _pay(address holder) internal returns (uint256 a) {

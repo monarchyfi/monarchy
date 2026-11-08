@@ -20,6 +20,7 @@ contract ExileNativeTest is Test {
     bytes4 internal constant CLAIM_FOR = bytes4(keccak256("claimFor(address)"));
     bytes4 internal constant CLAIM_REWARDS_FOR = bytes4(keccak256("claimRewards(address)"));
     bytes4 internal constant CLAIM_REWARDS_TO = bytes4(keccak256("claimRewards(address,address)"));
+    bytes4 internal constant CLAIM = bytes4(keccak256("claim()"));
 
     function setUp() public {
         vm.warp(1_700_000_000);
@@ -130,6 +131,8 @@ contract ExileNativeTest is Test {
         exile.setHarvest(address(token), poolId, address(hook), CLAIM_FOR);
         vm.expectRevert(Exile.InvalidHarvest.selector);
         exile.setHarvest(address(token), poolId, address(hook), CLAIM_REWARDS_FOR);
+        vm.expectRevert(Exile.InvalidHarvest.selector);
+        exile.setHarvest(address(token), poolId, address(hook), CLAIM);
         // the two-argument claim is on another contract
         vm.expectRevert(Exile.InvalidHarvest.selector);
         exile.setHarvest(address(token), poolId, address(token), CLAIM_REWARDS_TO);
@@ -143,6 +146,7 @@ contract ExileNativeTest is Test {
 
         exile.setHarvest(address(token), poolId, address(token), CLAIM_FOR);
         exile.setHarvest(address(token), poolId, address(token), CLAIM_REWARDS_FOR);
+        exile.setHarvest(address(token), poolId, address(token), CLAIM);
         exile.setHarvest(address(token), poolId, address(hook), CLAIM_REWARDS_TO);
         vm.stopPrank();
     }
@@ -171,6 +175,22 @@ contract ExileNativeTest is Test {
         vm.expectRevert(bytes("holder only"));
         token.claimRewards(address(exile));
         assertEq(exile.harvest(address(token)), 1 ether);
+    }
+
+    /// @dev ElysPump coins: `claim()` pays the caller, so only Exile's own harvest can take Exile's dividends.
+    function test_harvestTokenClaimPaysTheCaller() public {
+        uint256 poolId = _pool(address(0));
+        vm.prank(registrar);
+        exile.setHarvest(address(token), poolId, address(token), CLAIM);
+        uint256 a = _lock(alice, poolId, 100e18, 30 days);
+        token.credit{value: 2 ether}(address(exile));
+        vm.prank(bob);
+        assertEq(token.claim(), 0, "a stranger claims only their own");
+        assertEq(exile.harvest(address(token)), 2 ether);
+        assertEq(token.dividendOf(address(exile)), 0);
+        skip(3 days);
+        vm.prank(alice);
+        assertApproxEqAbs(exile.claimRewards(a), 2 ether, 1e6);
     }
 
     function test_harvestThroughTheHook() public {

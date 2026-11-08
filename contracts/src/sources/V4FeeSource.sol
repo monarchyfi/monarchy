@@ -119,8 +119,9 @@ abstract contract V4FeeSource is IFeeSource {
     }
 
     function resolve(address token, address quote)
-        external
+        public
         view
+        virtual
         returns (bytes32 poolId, address hook, bool tokenIs0)
     {
         if (quote != address(0)) revert QuoteUnsupported();

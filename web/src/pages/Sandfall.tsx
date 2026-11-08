@@ -205,7 +205,7 @@ function CreateStream({ sandfall, quote, token, quoteSymbol, tokenSymbol }: { sa
   const bal = useReadContract({ address: asset, abi: mockERC20Abi, functionName: "balanceOf", args: [address ?? ZERO], query: { enabled: !!asset && !isNative && !!address, ...POLL.query } });
   const native = useBalance({ address, query: { enabled: isNative && !!address, ...POLL.query } });
   const balance = isNative ? native.data?.value : bal.data;
-  // Eleos, Kleos and Boxa coins pay HYPE dividends to whoever holds them, and Sandfall can't take HYPE that way,
+  // Eleos, Kleos, Boxa and ElysPump coins pay HYPE dividends to whoever holds them, and Sandfall can't take HYPE that way,
   // so a coin vested here earns dividends nobody can ever claim
   const d = useDeployment();
   const harvest = useReadContract({ address: d?.exile, abi: exileAbi, functionName: "harvestOf", args: [asset ?? ZERO], query: { enabled: !!d?.pads && !!asset && !isNative, staleTime: 60_000 } });
@@ -291,7 +291,7 @@ function CreateStream({ sandfall, quote, token, quoteSymbol, tokenSymbol }: { sa
               <p className={paysDividends ? "warn small" : "muted small"}>
                 {paysDividends
                   ? "Don't vest this coin here. It pays its holders HYPE dividends, and the dividends earned by coins sitting in Sandfall can never be claimed by anyone. Lock it in Exile instead, where they reach the lockers."
-                  : "Don't vest Eleos, Kleos or Boxa coins here: they pay holders HYPE dividends, and the dividends earned by coins sitting in Sandfall can never be claimed. Lock them in Exile instead."}
+                  : "Don't vest Eleos, Kleos, Boxa or ElysPump coins here: they pay holders HYPE dividends, and the dividends earned by coins sitting in Sandfall can never be claimed. Lock them in Exile instead."}
               </p>
             )}
           </Step>

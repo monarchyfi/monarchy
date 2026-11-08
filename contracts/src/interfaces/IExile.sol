@@ -35,8 +35,8 @@ interface IExile {
     function cancelTiers(uint256 poolId) external;
 
     /// @notice Name the native pool that receives the HYPE dividends every lock of `stakeToken` earns, and the
-    /// claim that pays them: `selector(exile)` on the token itself, or `selector(token, exile)` on `target` (the
-    /// coin's hook). Registrars only (Monarchy factories).
+    /// claim that pays them: `selector(exile)` or `claim()` on the token itself, or `selector(token, exile)` on
+    /// `target` (the coin's hook). Registrars only (Monarchy factories).
     function setHarvest(address stakeToken, uint256 poolId, address target, bytes4 selector) external;
 
     /// @notice Claim the dividends Exile's balance of `stakeToken` earned and pay them to its harvest pool.

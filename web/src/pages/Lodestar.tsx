@@ -29,7 +29,7 @@ export function LodestarPage() {
   const defaultToken = d && isSet(d.token) ? d.token : undefined;
   const [defaultMeta, defaultQuoteMeta] = useTokenMeta([defaultToken, d?.quote]);
   if (!d) return <NoDeployment />;
-  // Elysium mainnet: the coins to activate are on Eleos, Kleos, Boxa and Ascend v5
+  // Elysium mainnet: the coins to activate are on Eleos, Kleos, Boxa, Ascend v5 and ElysPump
   if (d.pads && d.mode === "launchpads") return <PadsLodestar pads={d.pads} />;
   const token = isAddress(input) ? input : defaultToken;
   const badInput = input !== "" && !isAddress(input);
@@ -115,7 +115,7 @@ function ForToken({ d, token, quote }: { d: Deployment; token: Address; quote: A
 }
 
 /** Where a router lives: the Exile and factory it was made with, and the launchpad that holds its coin's creator
- * role. `launchpad` is Ascend testnet's, for its listing set-aside; routers on Eleos, Kleos, Boxa and Ascend v5 have
+ * role. `launchpad` is Ascend testnet's, for its listing set-aside; routers on Eleos, Kleos, Boxa, Ascend v5 and ElysPump have
  * none. `lockNote` adds to the creator lock's footnote what else can move the role on this launchpad. */
 export type RouterEnv = {
   exile: Address;
@@ -260,7 +260,7 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
           <Row k="Router" v={<Addr address={lodestar} />} />
           <Row k="Steward" v={<Addr address={core.steward} />} />
           {lockSet && <Row k="Creator role" v={`${lockWaiting ? "Will be locked" : "Locked"} ${lockForever ? "forever" : `until ${date(lockedUntil)}`}*`} />}
-          {/* Eleos, Kleos and Boxa take no tax in the coin, so only Ascend routers have token-side fees to route */}
+          {/* Eleos, Kleos, Boxa and ElysPump take no tax in the coin, so only Ascend routers have token-side fees to route */}
           {env.launchpad && <Row k="Token-side fees" v={cfg.tokenToHolders ? <Badge tone="gold">All paid to Exile lockers</Badge> : <Badge tone="grey">All burned</Badge>} />}
           <Row k="Buyback route" v={cfg.swapper === ZERO ? <Badge tone="amber">None: buybacks wait in reserve</Badge> : <Addr address={cfg.swapper} />} />
           <Row k="Max slippage" v={`${pct(cfg.maxSlippageBps)} vs ${env.priceRef}`} />

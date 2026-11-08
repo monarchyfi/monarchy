@@ -24,7 +24,7 @@ export function ExilePage() {
   usePageTitle("Exile");
   const d = useDeployment();
   const core = useLodestarCore();
-  // a chain with no featured token (Elysium mainnet, where the coins are on Eleos, Kleos and Boxa) opens on "Lock a coin"
+  // a chain with no featured token (Elysium mainnet, where the coins are on Eleos, Kleos, Boxa, Ascend and ElysPump) opens on "Lock a coin"
   const featured = isSet(d?.lodestar);
   const [mode, setMode] = useState<"main" | "else">(featured ? "main" : "else");
   const poolId = core.exilePoolId;
@@ -296,7 +296,7 @@ function SomethingElse({ exile }: { exile: Address }) {
   const bad = input !== "" && !token;
   // a token with its own Lodestar has its own Exile reward pool and tiers
   const lodestar = useRouterOf(token);
-  // A coin that pays holders dividends (Eleos, Kleos, Boxa) has a harvest, and Exile only takes its locks in the
+  // A coin that pays holders dividends (Eleos, Kleos, Boxa, ElysPump) has a harvest, and Exile only takes its locks in the
   // harvest's pool (anything else reverts HarvestPoolOnly), so that pool wins over whatever router the lookup found.
   const harvest = useReadContract({ address: exile, abi: exileAbi, functionName: "harvestOf", args: [token ?? ZERO], query: { enabled: !!token } });
   const harvestPool = harvest.data && harvest.data[0] !== 0n ? harvest.data[0] : undefined;

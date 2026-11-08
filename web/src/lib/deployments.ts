@@ -19,7 +19,7 @@ export type Deployment = {
   poolId: Hex;
   lodestar: Address;
   startBlock: number;
-  /** Eleos, Kleos, Boxa and Ascend v5 on this chain (deployments/launchpads/<chainId>.json), which share this Exile and Sandfall. */
+  /** Eleos, Kleos, Boxa, Ascend v5 and ElysPump on this chain (deployments/launchpads/<chainId>.json), which share this Exile and Sandfall. */
   pads?: LaunchpadsDeployment;
 };
 

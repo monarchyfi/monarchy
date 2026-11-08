@@ -13,7 +13,7 @@ export const elysiumTestnet = defineChain({
   testnet: true,
 });
 
-/** Elysium mainnet, where Eleos, Kleos, Boxa and Ascend v5 run. VITE_MAINNET_RPC_URL points it at another node (a local
+/** Elysium mainnet, where Eleos, Kleos, Boxa, Ascend v5 and ElysPump run. VITE_MAINNET_RPC_URL points it at another node (a local
  * anvil fork for a rehearsal, say). */
 export const elysiumMainnet = defineChain({
   id: 99901,

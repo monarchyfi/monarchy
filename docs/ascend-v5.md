@@ -167,7 +167,7 @@ may have no picture.
 ## Deploying and running it
 
 Ascend v5 is the fourth launchpad in the mainnet scripts (`LAUNCHPAD=ascend`), so it shares the multisig owner,
-Exile, Sandfall and the Lodestar implementation with Eleos, Kleos and Boxa (docs/launchpads.md):
+Exile, Sandfall and the Lodestar implementation with Eleos, Kleos, Boxa and ElysPump (docs/launchpads.md):
 
 - `DeployLaunchpads` deploys `AscendV5FeeSource`, an `AscendV5Swapper`, a factory and an `AscendV5Launcher`, and
   records them under `launchpads.ascend` in `deployments/launchpads/99901.json`. The factory never needs to be an
@@ -206,7 +206,7 @@ Ascend waits:
 | Boxa | the creator proposes the router, then activating creates it and accepts in the same transaction | none |
 | Ascend, launched through Monarchy | the router is the fee wallet from the first trade | none |
 | Ascend, launched on Ascend | propose on the escrow, activate, accept | 48 hours, in Ascend's escrow |
-| ElysPump | not supported yet; its own fee wallet change (`setFeeReceiver`) is instant | n/a |
+| ElysPump | activate (the router is created), then the fee receiver makes it the coin's fee receiver (`setFeeReceiver`); coins with a receiver share of 0 can't be activated | none |
 
 ## Not done yet
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The keeper for Monarchy on Eleos, Kleos, Boxa and Ascend v5 (Elysium mainnet), as .github/workflows/distribute.yml
+# The keeper for Monarchy on Eleos, Kleos, Boxa, ElysPump and Ascend v5 (Elysium mainnet), as .github/workflows/distribute.yml
 # runs it every 3 hours. tools/keeper-distribute.sh stays the keeper for the one Ascend router on the testnet.
 #
 #   RPC_URL=... KEEPER_PRIVATE_KEY=... tools/keeper-launchpads.sh [deployments/launchpads/99901.json] [chainId]

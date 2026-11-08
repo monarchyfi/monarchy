@@ -19,6 +19,9 @@ const contracts = [
   "ILaunchpadHooks:IEleosHook",
   "ILaunchpadHooks:IKleosHook",
   "ILaunchpadHooks:IBoxaHook",
+  // ElysPump's adapter (for its receiver share) and its v2 and v3 hooks
+  "ElysPumpFeeSource",
+  "ILaunchpadHooks:IElysPumpHook",
   // Ascend v5 on Elysium mainnet: its adapter, launchpad, per-pool escrow and seat contract
   "AscendV5FeeSource",
   "IAscendV5:IAscendV5Launchpad",

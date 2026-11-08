@@ -1,7 +1,7 @@
 import { concat, encodeAbiParameters, getContractAddress, keccak256, type Address, type Hex } from "viem";
 
 /** The launchpads on Elysium mainnet Monarchy routes for. The order is the one the forge scripts use. */
-export const PAD_KEYS = ["eleos", "kleos", "boxa", "ascend"] as const;
+export const PAD_KEYS = ["eleos", "kleos", "boxa", "ascend", "elyspump"] as const;
 export type PadKey = (typeof PAD_KEYS)[number];
 
 export type QuoteInfo = { address: Address; symbol: string };
@@ -10,7 +10,7 @@ export type PadInfo = {
   key: PadKey;
   name: string;
   site: string;
-  /** Boxa and Ascend propose the router and the router accepts; Eleos and Kleos hand the role over in one call. */
+  /** Boxa and Ascend propose the router and the router accepts; Eleos, Kleos and ElysPump hand the role over in one call. */
   twoStep: boolean;
   /** Ascend v5: the router can only accept 48 hours after it was proposed, so anyone accepts later. */
   delayed?: boolean;
@@ -45,9 +45,10 @@ export const PADS: Record<PadKey, PadInfo> = {
   kleos: { key: "kleos", name: "Kleos", site: "https://thekleos.xyz", twoStep: false },
   boxa: { key: "boxa", name: "Boxa", site: "https://boxa.club", twoStep: true },
   ascend: { key: "ascend", name: "Ascend", site: "https://ascendlaunch.xyz", twoStep: true, delayed: true, quotes: ASCEND_QUOTES },
+  elyspump: { key: "elyspump", name: "ElysPump", site: "https://elysp.com", twoStep: false },
 };
 
-/** "Eleos, Kleos, Boxa or Ascend", for the pads a deployment has. */
+/** "Eleos, Kleos, Boxa, Ascend or ElysPump", for the pads a deployment has. */
 export function padNames(list: { info: PadInfo }[], last = "or"): string {
   const names = list.map(({ info }) => info.name);
   return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} ${last} ${names[names.length - 1]}`;

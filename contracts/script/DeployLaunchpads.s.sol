@@ -19,9 +19,10 @@ import {EleosFeeSource} from "../src/sources/EleosFeeSource.sol";
 import {KleosFeeSource} from "../src/sources/KleosFeeSource.sol";
 import {BoxaFeeSource} from "../src/sources/BoxaFeeSource.sol";
 import {AscendV5FeeSource} from "../src/sources/AscendV5FeeSource.sol";
+import {ElysPumpFeeSource} from "../src/sources/ElysPumpFeeSource.sol";
 import {IAscendV5Launchpad} from "../src/interfaces/IAscendV5.sol";
 
-/// @notice Step 1 of 2 for Monarchy on Eleos, Kleos, Boxa and Ascend v5 (Elysium mainnet). Deploys what
+/// @notice Step 1 of 2 for Monarchy on Eleos, Kleos, Boxa, Ascend v5 and ElysPump (Elysium mainnet). Deploys what
 /// deployments/launchpads/<chainId>.json doesn't already record, so a run that stopped halfway can be repeated:
 /// - the shared core: Exile, Sandfall, the Lodestar implementation (reused from deployments/<chainId>.json when the
 ///   Ascend core is already on this chain, so every Monarchy router shares one Exile) and the V4PriceObserver;
@@ -32,10 +33,10 @@ import {IAscendV5Launchpad} from "../src/interfaces/IAscendV5.sol";
 ///   factory only takes its launches once the owner calls `setLauncher` (printed when the deployer isn't the owner).
 /// FACTORY_OWNER (required) owns every factory and adapter and is handed Exile; on mainnet it must be a multisig.
 /// Each factory names its routers' harvests in Exile, so it has to become an Exile registrar, which takes 12 hours:
-/// this script proposes the Eleos, Kleos and Boxa factories, and FinishLaunchpads adds them once the timelock has
+/// this script proposes the Eleos, Kleos, Boxa and ElysPump factories, and FinishLaunchpads adds them once the timelock has
 /// passed (anyone may run it). Ascend v5 coins pay no holder dividends, so its factory never needs the role.
 /// Exile goes to FACTORY_OWNER in the same run, so the multisig must then call `Exile.acceptOwner()`.
-/// No Eleos, Kleos or Boxa router can activate before FinishLaunchpads. On a fork from before Ascend v5 went live
+/// No Eleos, Kleos, Boxa or ElysPump router can activate before FinishLaunchpads. On a fork from before Ascend v5 went live
 /// (block 422319) the Ascend pad is skipped.
 contract DeployLaunchpads is LaunchpadsBase {
     function run() external {
@@ -127,6 +128,8 @@ contract DeployLaunchpads is LaunchpadsBase {
                 p.source = address(new KleosFeeSource(observer, owner, hooks, kinds));
             } else if (i == 2) {
                 p.source = address(new BoxaFeeSource(observer, owner, hooks, kinds));
+            } else if (i == ELYSPUMP) {
+                p.source = address(new ElysPumpFeeSource(observer, owner, hooks, kinds));
             } else {
                 // stateless and ownerless: it reads the pool manager and escrow factory from the launchpad, and the
                 // price from Ascend's own EMA, so it needs neither the observer nor the owner

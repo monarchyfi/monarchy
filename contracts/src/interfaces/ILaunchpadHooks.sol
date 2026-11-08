@@ -84,3 +84,21 @@ interface IBoxaHook {
     function proposeCreator(bytes32 poolId, address next) external;
     function acceptCreator(bytes32 poolId) external;
 }
+
+/// @notice ElysPump's v2 and v3 hooks (elysp.com; unverified, names from the selector table in ElysPump's own site,
+/// shapes from eth_call and fork simulation on Elysium mainnet). Both hooks run the same bytecode, v2 on ElysPump's
+/// own pool manager and v3 on the official one. `launches(token)` returns a 13-word tuple the adapter reads word by
+/// word: creator, feeReceiver, quote, buyFeeBps, sellFeeBps, receiverShareBps, holdersShareBps, buybackShareBps,
+/// snipeFeeBps, launchedAt, snipeSecs, (unused), startTick.
+interface IElysPumpHook {
+    function poolManager() external view returns (address);
+    function keyOf(address token) external view returns (V4PoolKey memory);
+    function tokenOfPool(bytes32 poolId) external view returns (address);
+    function currentBuyFeeBps(address token) external view returns (uint256);
+    function owed(address account, address currency) external view returns (uint256); // across all its coins
+    function claim(address currency) external; // pays the caller what it is owed in `currency`
+    function setFeeReceiver(address token, address to) external; // only the current receiver, at once
+    function flush(address token) external;
+    function holderPending(address token) external view returns (uint256);
+    function buybackPending(address token) external view returns (uint256);
+}

@@ -9,23 +9,26 @@ import {Lodestar} from "../src/Lodestar.sol";
 import {LodestarFactory} from "../src/LodestarFactory.sol";
 import {ILodestar} from "../src/interfaces/ILodestar.sol";
 import {IFeeSource} from "../src/interfaces/IFeeSource.sol";
-import {IEleosHook, IKleosHook, IBoxaHook} from "../src/interfaces/ILaunchpadHooks.sol";
+import {IEleosHook, IBoxaHook} from "../src/interfaces/ILaunchpadHooks.sol";
 import {V4FeeSource} from "../src/sources/V4FeeSource.sol";
 import {AscendV5FeeSource} from "../src/sources/AscendV5FeeSource.sol";
 import {IAscendV5Escrow} from "../src/interfaces/IAscendV5.sol";
 import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
 import {MockArbSys} from "../src/mocks/MockArbSys.sol";
 
-/// @notice Activate a Lodestar for a coin on Eleos, Kleos, Boxa or Ascend v5, run by the coin's creator (PRIVATE_KEY
-/// is the address the launchpad records as creator). LAUNCHPAD=eleos|kleos|boxa|ascend, TOKEN=<coin>,
+/// @notice Activate a Lodestar for a coin on Eleos, Kleos, Boxa, Ascend v5 or ElysPump, run by the coin's creator
+/// (PRIVATE_KEY is the address the launchpad records as creator, the fee receiver on ElysPump).
+/// LAUNCHPAD=eleos|kleos|boxa|ascend|elyspump, TOKEN=<coin>,
 /// TREASURY=<Team Treasury recipient, permanent>. The order follows the launchpad, so a creator can't get it wrong:
 /// - Boxa (two-step, like Ascend): `proposeCreator(poolId, router)` on the hook, then `factory.deploy`, which
 ///   accepts the role.
-/// - Eleos and Kleos (one-step): `factory.deploy` first, then `transferCreator(coin, router)` on the hook. If the
-///   second transaction doesn't land, run the script again: it sees the router and only hands the role over.
+/// - Eleos, Kleos and ElysPump (one-step): `factory.deploy` first, then the hand-over on the hook
+///   (`transferCreator(coin, router)`, or `setFeeReceiver(coin, router)` on ElysPump). If the second transaction
+///   doesn't land, run the script again: it sees the router and only hands the role over.
 ///   On Eleos the fees the hook holds for the coin follow the role, so the script first pays the creator what
-///   they earned (`process` if due, then `payCreator`) unless CLAIM_FIRST=false. Kleos and Boxa keep earned fees
-///   by address, so the creator claims those on the launchpad whenever they like.
+///   they earned (`process` if due, then `payCreator`) unless CLAIM_FIRST=false. Kleos, Boxa and ElysPump keep
+///   earned fees by address, so the creator claims those on the launchpad whenever they like. An ElysPump coin
+///   whose receiver share is 0 has nothing to route and can't be activated.
 /// - Ascend v5 (two-step with a 48 hour wait): `proposeRecipient(router)` on the pool's escrow, then
 ///   `factory.deploy`, which leaves the hand-off pending. Run the script again once the 48 hours are over (any
 ///   funded key will do then) and it calls the router's `acceptCreator()`. QUOTE=whype|usdc|kntq|<address> picks
@@ -73,7 +76,7 @@ contract ActivateLaunchpad is LaunchpadsBase {
             require(creator == me, "PRIVATE_KEY is not the coin's creator on the launchpad");
             console2.log("the router exists; handing the role over");
             vm.startBroadcast(pk);
-            IKleosHook(hook).transferCreator(token, predicted); // same call on Eleos and Kleos
+            _handOver(source, token, poolId, predicted);
             vm.stopBroadcast();
             _check(predicted);
             return;
@@ -110,7 +113,7 @@ contract ActivateLaunchpad is LaunchpadsBase {
         } else {
             if (li == 0 && vm.envOr("CLAIM_FIRST", true)) _claimEleos(hook, token);
             require(factory.deploy(p) == predicted, "deployed somewhere else");
-            IKleosHook(hook).transferCreator(token, predicted);
+            _handOver(source, token, poolId, predicted);
         }
         vm.stopBroadcast();
         _check(predicted);
@@ -215,6 +218,21 @@ contract ActivateLaunchpad is LaunchpadsBase {
             return address(other) != token && factory.lodestarOf(address(other)) == holder;
         } catch {
             return false;
+        }
+    }
+
+    /// @dev A one-step hand-over, as the adapter builds it: `transferCreator(coin, router)` on Eleos and Kleos,
+    /// `setFeeReceiver(coin, router)` on ElysPump, always to the coin's hook.
+    function _handOver(V4FeeSource source, address token, bytes32 poolId, address router) internal {
+        IFeeSource.Call[] memory cs = source.transferOutCalls(token, poolId, router);
+        require(cs.length == 1, "the adapter has no one-step hand-over");
+        (address hook,) = source.hookOf(token);
+        require(cs[0].target == hook, "the hand-over isn't on the coin's hook");
+        (bool ok, bytes memory r) = cs[0].target.call(cs[0].data);
+        if (!ok) {
+            assembly {
+                revert(add(r, 32), mload(r))
+            }
         }
     }
 

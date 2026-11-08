@@ -128,11 +128,12 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     uint256 internal constant REWARD = 0; // stream paid in the pool's reward token
     uint256 internal constant STAKE = 1; // stream paid in the stake token
     /// @dev The dividend claims a harvest may call. On the stake token, as `selector(address(this))`: Eleos coins'
-    /// `claimFor(holder)` and Kleos coins' `claimRewards(holder)`. On another contract (the coin's hook), as
-    /// `selector(stakeToken, address(this))`: Boxa hooks' `claimRewards(token, recipient)`, which pays the caller's
-    /// dividends in that token to the recipient.
+    /// `claimFor(holder)` and Kleos coins' `claimRewards(holder)`; or with no argument, ElysPump coins' `claim()`,
+    /// which pays the caller. On another contract (the coin's hook), as `selector(stakeToken, address(this))`: Boxa
+    /// hooks' `claimRewards(token, recipient)`, which pays the caller's dividends in that token to the recipient.
     bytes4 internal constant CLAIM_FOR = bytes4(keccak256("claimFor(address)"));
     bytes4 internal constant CLAIM_REWARDS_FOR = bytes4(keccak256("claimRewards(address)"));
+    bytes4 internal constant CLAIM = bytes4(keccak256("claim()"));
     bytes4 internal constant CLAIM_REWARDS_TO = bytes4(keccak256("claimRewards(address,address)"));
 
     struct Harvest {
@@ -288,7 +289,7 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         if (!isRegistrar[msg.sender]) revert NotRegistrar();
         Pool storage p = _pool(poolId);
         if (p.stakeToken != stakeToken || p.rewardToken != address(0)) revert InvalidHarvest();
-        if (selector == CLAIM_FOR || selector == CLAIM_REWARDS_FOR) {
+        if (selector == CLAIM_FOR || selector == CLAIM_REWARDS_FOR || selector == CLAIM) {
             if (target != stakeToken) revert InvalidHarvest();
         } else if (selector == CLAIM_REWARDS_TO) {
             if (target == stakeToken || target.code.length == 0) revert InvalidHarvest();
@@ -307,9 +308,11 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         if (h.poolId == 0) revert NoHarvest();
         uint256 before = address(this).balance;
         _harvesting = stakeToken;
-        bytes memory data = h.target == stakeToken
-            ? abi.encodeWithSelector(h.selector, address(this))
-            : abi.encodeWithSelector(h.selector, stakeToken, address(this));
+        bytes memory data = h.selector == CLAIM
+            ? abi.encodeWithSelector(CLAIM)
+            : h.target == stakeToken
+                ? abi.encodeWithSelector(h.selector, address(this))
+                : abi.encodeWithSelector(h.selector, stakeToken, address(this));
         (bool claimed,) = h.target.call(data);
         _harvesting = address(0);
         // nothing in a claim can take HYPE out of Exile: every payout path is nonReentrant
