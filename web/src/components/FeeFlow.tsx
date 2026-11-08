@@ -52,7 +52,7 @@ export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { dri
         <div className="flow-node flow-src ascii-box">
           <div className="flow-kicker">Source</div>
           <div className="flow-title">Ascend pool fees</div>
-          <p>The creator half of every 1% swap fee, in the token and the quote asset.</p>
+          <p>The creator's share of every swap fee. On the testnet that is half of a 1% fee, in the token and the quote asset.</p>
         </div>
         <FlowArrow />
         <div className="flow-node flow-hub ascii-box">

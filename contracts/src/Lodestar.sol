@@ -31,7 +31,10 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     /// @dev A buy that costs more than this in fees and tax right now (a launch's anti-snipe window, a raised tax)
     /// is not tried; the buyback share waits in reserve.
-    uint256 public constant MAX_SWAP_COST_BPS = 500;
+    /// Ascend v5 pools charge a fixed 1% to 10% plus up to 1% to a builder, so this allows up to 11%: the minimum
+    /// output already allows for the fee, and a higher fee only makes a sandwich of the small capped buys cost more.
+    /// It applies to every launchpad: a Boxa, Kleos or Eleos buy tax of up to 11% is now bought through too.
+    uint256 public constant MAX_SWAP_COST_BPS = 1_100;
     uint256 public constant MIN_SLIPPAGE_BPS = 100;
     uint256 public constant MAX_SLIPPAGE_BPS = 2_000;
     uint64 public constant TIMELOCK = 12 hours;
@@ -61,8 +64,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     address public factory;
     /// @notice The launchpad's fee-source adapter: views and the calls this router sends as the creator.
     IFeeSource public source;
-    /// @notice The contract that holds the creator role (Ascend's launchpad, a Boxa, Kleos or Eleos hook). The only
-    /// address this router sends launchpad calls to.
+    /// @notice The contract that holds the creator role (Ascend's testnet launchpad, an Ascend v5 pool's escrow, a
+    /// Boxa, Kleos or Eleos hook). The only address this router sends launchpad calls to.
     address public hook;
     IListingDesk public desk;
     IExile public exile;
@@ -207,7 +210,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit Initialized(p.poolId, p.token, p.quote, p.steward, p.config);
     }
 
-    /// @notice Second half of a two-step creator handover (Ascend, Boxa). The current creator must have proposed
+    /// @notice Second half of a two-step creator handover (Ascend, Boxa). On Ascend v5 it works only once the
+    /// launchpad's 48 hour wait has passed, so it is called then, by anyone. The current creator must have proposed
     /// this Lodestar on the launchpad first; that call is the consent, so anyone may finish the hand-off. The
     /// factory calls this at deploy, and it works again later if the role ever left (an expired lock, a hand-out
     /// the steward reverses), so a token can come back to Monarchy. On one-step launchpads (Kleos, Eleos) the role
@@ -506,10 +510,14 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     }
 
     /// @notice Promise the creator role stays with this router until `until` (type(uint64).max = forever).
-    /// Can only be extended, and not while a hand-off is pending (it could be accepted after locking).
+    /// Can only be extended, and not while a hand-off away from this router is pending (it could be accepted after
+    /// locking). A hand-off to this router still waiting to be accepted (Ascend v5's 48 hours) is fine: the lock
+    /// binds from the moment the router holds the role, and until then the creator can still cancel, so read
+    /// `creatorRoleLocked()` rather than this value alone.
     function lockCreatorRole(uint64 until) external onlyStewardOrFactory {
         if (until <= creatorLockedUntil || until <= block.timestamp) revert NotExtending();
-        if (source.pendingCreator(address(token), poolId) != address(0)) revert CreatorTransferPending();
+        address pending = source.pendingCreator(address(token), poolId);
+        if (pending != address(0) && pending != address(this)) revert CreatorTransferPending();
         creatorLockedUntil = until;
         emit CreatorRoleLocked(until);
     }
@@ -634,6 +642,14 @@ contract Lodestar is ILodestar, ReentrancyGuard {
 
     function isCreator() external view returns (bool) {
         return source.creator(address(token), poolId) == address(this);
+    }
+
+    /// @notice True while the creator lock actually binds: this router holds the role and the lock hasn't run out.
+    /// `creatorLockedUntil` alone can be set before the role arrives (Ascend v5's 48 hour wait), when the creator
+    /// can still cancel the hand-off. A launchpad's own override (an approved Ascend v5 community takeover) can
+    /// still move the role; see the adapter's `takeoverRegistry`.
+    function creatorRoleLocked() external view returns (bool) {
+        return block.timestamp < creatorLockedUntil && source.creator(address(token), poolId) == address(this);
     }
 
     // ================================================================ internals

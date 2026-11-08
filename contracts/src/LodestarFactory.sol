@@ -94,7 +94,8 @@ contract LodestarFactory {
         bool tokenIs0;
         address lodestar;
         address steward;
-        bool twoStep;
+        bool twoStep; // the creator proposes the router first (TwoStep or TwoStepDelayed)
+        bool acceptNow; // and the router can accept in the same transaction (TwoStep only)
     }
 
     constructor(
@@ -125,7 +126,8 @@ contract LodestarFactory {
 
     /// @notice Activate a Lodestar. The caller must be the pool's current creator on the launchpad. On a
     /// two-step launchpad they must already have proposed the predicted router as creator; on a one-step one
-    /// they hand the role over after this call. Send about 6M gas when `enrolListing` is set (Ascend's desk
+    /// they hand the role over after this call. On a delayed two-step launchpad (Ascend v5) the router is deployed
+    /// with the proposal still pending and accepts once the launchpad's wait is over. Send about 6M gas when `enrolListing` is set (Ascend's desk
     /// checks a gas floor).
     /// The steward of the router that holds the role may also call it to deploy that router's upgrade target
     /// here (see `Lodestar.proposeUpgrade`): during the 7 day notice on one-step launchpads, after
@@ -177,7 +179,9 @@ contract LodestarFactory {
         (t.poolId, t.hook, t.tokenIs0) = source.resolve(p.token, p.quote);
         t.lodestar = Clones.predictDeterministicAddress(implementation, t.poolId, address(this));
         t.steward = steward;
-        t.twoStep = source.handover() == IFeeSource.Handover.TwoStep;
+        IFeeSource.Handover h = source.handover();
+        t.twoStep = h != IFeeSource.Handover.OneStep;
+        t.acceptNow = h == IFeeSource.Handover.TwoStep;
     }
 
     function _deploy(DeployParams calldata p, Target memory t) internal {
@@ -228,7 +232,9 @@ contract LodestarFactory {
         ip.burnSink = source.burnSink(p.token);
         ip.steward = t.steward;
         ILodestar(lodestar).initialize(ip);
-        if (t.twoStep) ILodestar(lodestar).acceptCreator();
+        // on a delayed launchpad (Ascend v5) the router accepts after the launchpad's wait: anyone calls
+        // `Lodestar.acceptCreator()` then
+        if (t.acceptNow) ILodestar(lodestar).acceptCreator();
         if (p.enrolListing) ILodestar(lodestar).enrollListing(p.listingCap);
         if (p.creatorLockUntil > 0) ILodestar(lodestar).lockCreatorRole(p.creatorLockUntil);
 

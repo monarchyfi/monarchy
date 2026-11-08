@@ -7,11 +7,14 @@ pragma solidity ^0.8.24;
 /// initialize, and only ever sends a call to the pool's `hook` (the contract that holds the role), never with
 /// value, so an adapter cannot turn a router into a generic caller.
 interface IFeeSource {
-    /// @dev TwoStep: the creator proposes the router and the router accepts (Ascend, Boxa). OneStep: the creator
-    /// hands the role over in one call and there is nothing to accept (Kleos, Eleos).
+    /// @dev TwoStep: the creator proposes the router and the router accepts (Ascend testnet, Boxa). OneStep: the
+    /// creator hands the role over in one call and there is nothing to accept (Kleos, Eleos). TwoStepDelayed: like
+    /// TwoStep, but the router can only accept after a wait (Ascend v5, 48 hours), so the factory deploys the router
+    /// without accepting and anyone calls `Lodestar.acceptCreator()` once the wait is over.
     enum Handover {
         TwoStep,
-        OneStep
+        OneStep,
+        TwoStepDelayed
     }
 
     struct Call {
