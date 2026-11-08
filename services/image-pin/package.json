@@ -1,0 +1,15 @@
+{
+  "name": "monarchy-image-pin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pins coin pictures to IPFS for Monarchy's launch form, the way Ascend's own form does",
+  "main": "worker.mjs",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "test": "node --test test.mjs"
+  },
+  "dependencies": {
+    "viem": "2.57.7"
+  }
+}

@@ -1,0 +1,16 @@
+# Cloudflare Worker for coin picture uploads. Deploy with `npx wrangler deploy` after:
+#   npx wrangler kv namespace create LIMITS      (put the id below)
+#   npx wrangler secret put PINATA_JWT           (a Pinata API key's JWT, with permission to upload files)
+# Then build the site with VITE_IMAGE_UPLOAD_URL=https://<this worker's URL>.
+name = "monarchy-image-pin"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://monarchy.fi"
+CHAIN_ID = "99901"
+RPC_URL = "https://rpc-live.boxa.club"
+
+[[kv_namespaces]]
+binding = "LIMITS"
+id = "<the LIMITS namespace id>"

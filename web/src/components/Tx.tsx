@@ -14,7 +14,9 @@ import { Spinner } from "./Ui";
 export type WriteRequest = { address: Address; abi: Abi; functionName: string; args?: readonly unknown[]; value?: bigint; gas?: bigint } & Record<string, any>;
 
 type Props = {
-  request: () => WriteRequest | undefined;
+  /** May be async, for a step before the transaction (a picture upload); `preparing` labels the button meanwhile. */
+  request: () => WriteRequest | undefined | Promise<WriteRequest | undefined>;
+  preparing?: ReactNode;
   children: ReactNode;
   disabledReason?: string;
   onDone?: () => void;
@@ -32,7 +34,7 @@ type Props = {
 const HEADROOM_PCT = 30n;
 
 /** Sends one transaction and shows pending / confirmed / error, with an explorer link when there is one. */
-export function TxButton({ request, children, disabledReason, onDone, className, headroom, minGas }: Props) {
+export function TxButton({ request, children, disabledReason, onDone, className, headroom, minGas, preparing }: Props) {
   const chainId = useChainId();
   const { isConnected, address } = useConnection();
   const client = usePublicClient({ chainId });
@@ -42,6 +44,7 @@ export function TxButton({ request, children, disabledReason, onDone, className,
   const [hash, setHash] = useState<`0x${string}`>();
   const receipt = useWaitForTransactionReceipt({ hash });
   const [error, setError] = useState<string>();
+  const [building, setBuilding] = useState(false);
   const tipId = useId();
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export function TxButton({ request, children, disabledReason, onDone, className,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt.isSuccess]);
 
-  const busy = write.isPending || (!!hash && receipt.isLoading);
+  const busy = building || write.isPending || (!!hash && receipt.isLoading);
   // Nothing is sent while the wallet sits on another chain; the notice under the nav offers the switch.
   const reason = !isConnected ? "Connect first" : wrongNetwork ? `Switch your wallet to ${chainName(target.id)} first` : disabledReason;
   // why the button is grey shows as a popup over it, on hover or on a tap
@@ -69,7 +72,16 @@ export function TxButton({ request, children, disabledReason, onDone, className,
     setHash(undefined);
     try {
       // inside the try: a request built from a bad input (a fraction where whole seconds go) throws here
-      let req = request();
+      const built = request();
+      let req: WriteRequest | undefined;
+      if (built instanceof Promise) {
+        setBuilding(true);
+        try {
+          req = await built;
+        } finally {
+          setBuilding(false);
+        }
+      } else req = built;
       if (!req) return;
       if ((headroom || minGas) && req.gas === undefined && client && address) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,7 +122,11 @@ export function TxButton({ request, children, disabledReason, onDone, className,
           aria-busy={busy}
           aria-describedby={tip ? tipId : undefined}
         >
-          {write.isPending ? (
+          {building ? (
+            <>
+              <Spinner /> {preparing ?? "Preparing"}
+            </>
+          ) : write.isPending ? (
             <>
               <Spinner /> Confirm in wallet
             </>

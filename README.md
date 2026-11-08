@@ -34,7 +34,7 @@ On Ascend the creator role collects a share of every swap fee: half of a 1% fee 
 
 ### On Ascend's mainnet launchpad (v5)
 
-Ascend v5 gives each coin a creator escrow. There are two ways onto Monarchy: launch a new coin through Monarchy's `AscendV5Launcher`, which makes its router the escrow's recipient from the first trade in the same transaction and stores the coin's picture on chain, or launch on Ascend as a Vanilla coin and switch, where the creator proposes its Lodestar as the escrow's recipient and 48 hours later anyone completes the hand-off (Ascend's wait, which nobody can shorten). Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
+Ascend v5 gives each coin a creator escrow. There are two ways onto Monarchy: launch a new coin through Monarchy's `AscendV5Launcher`, which makes its router the escrow's recipient from the first trade in the same transaction, with the coin's picture uploaded as on Ascend's own form, or launch on Ascend as a Vanilla coin and switch, where the creator proposes its Lodestar as the escrow's recipient and 48 hours later anyone completes the hand-off (Ascend's wait, which nobody can shorten). Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
 
 ### On Eleos, Kleos and Boxa
 
@@ -137,6 +137,7 @@ contracts/script     DeployMocks, DeployCore, LaunchOnAscend, ActivateLodestar, 
 deployments/         <chainId>.json written by the scripts and read by the website; launchpads/<chainId>.json
                      for Eleos, Kleos, Boxa and Ascend v5
 web/                 Vite + React + wagmi site (landing page, Kingdom overview, Lodestar, Exile, Sandfall)
+services/image-pin/  the coin picture upload (a Cloudflare Worker that pins to IPFS, as Ascend's form does)
 docs/                Architecture notes, the Eleos, Kleos and Boxa guide, and the demo script
 tools/               demo-local.sh, keeper scripts, rehearse-launchpads.sh, rehearse-ascend-v5.sh, export-abis.mjs,
                      offline solc shim

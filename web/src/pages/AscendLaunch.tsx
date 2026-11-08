@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import { useBalance, useConnection, useReadContract } from "wagmi";
-import { bytesToHex, parseUnits, toHex, type Address } from "viem";
+import { useMemo, useRef, useState } from "react";
+import { useBalance, useChainId, useConnection, useReadContract, useSignMessage } from "wagmi";
+import { parseUnits, toHex, type Address } from "viem";
 import { ascendV5LauncherAbi, lodestarAbi, mockERC20Abi } from "../abi";
+import { ImagePicker, type CoinImage } from "../components/ImagePicker";
 import { TxButton, WithApproval } from "../components/Tx";
 import { Addr, Badge, Card, Row } from "../components/Ui";
 import { isSet, ZERO } from "../lib/deployments";
@@ -18,14 +19,19 @@ import {
   type PadDeployment,
 } from "../lib/launchpads";
 import { useTokenMeta } from "../lib/monarchy";
-import { MAX_PICTURE, pictureUrl, shrinkPicture } from "../lib/picture";
+import { imageUrl, UPLOAD_URL, uploadImage } from "../lib/imageUpload";
 import { Switch } from "./Exile";
 import { ActivationSettings, useActivationSettings } from "./Lodestar";
 
-/** AscendV5Launcher's limits, checked here first so the button never sends a launch that has to revert. */
+/** AscendV5Launcher's limits, which are Ascend's own form's, checked here first so the button never sends a launch
+ * that has to revert. */
 const MAX_PLAN = 500;
-const MAX_DESCRIPTION = 1000;
-const MAX_LINK = 300;
+const MAX_DESCRIPTION = 500;
+const MAX_LINK = 200;
+const MAX_NAME = 40;
+const MAX_SYMBOL = 32;
+/** The button's words while a picture is being uploaded, as on Ascend. */
+const UPLOAD_STEP = { signing: "Sign to publish your image…", uploading: "Saving artwork…" } as const;
 const FEES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const bytes = (s: string) => new TextEncoder().encode(s).length;
@@ -46,7 +52,8 @@ export function TwoWays({ launchable }: { launchable: boolean }) {
           </p>
           <p className="muted small">
             Two differences. Community takeovers are off, and Ascend's site only lets a coin's fee wallet publish its picture and
-            description. Here the fee wallet is the router, so Monarchy's launcher stores the picture on chain and this site shows it.
+            description. Here the fee wallet is the router, so the picture is pinned to IPFS as on Ascend, its link is kept on Monarchy, and
+            this site shows it.
           </p>
         </div>
         <div className="way">
@@ -89,7 +96,8 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
   const [quoteIdx, setQuoteIdx] = useState("0");
   const [fee, setFee] = useState(3);
   const [devBuy, setDevBuy] = useState("");
-  const [picture, setPicture] = useState<Uint8Array>();
+  const [image, setImage] = useState<CoinImage>();
+  const upload = useImageUpload();
   const [description, setDescription] = useState("");
   const [website, setWebsite] = useState("");
   const [twitter, setTwitter] = useState("");
@@ -116,7 +124,7 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
   }
 
   const coin = { name: name.trim(), symbol: symbol.trim(), quote, fee: fee * 10_000, devBuyQuote: devBuyWei, minDevOut: 0n, salt } as const;
-  const profile = { image: picture ? bytesToHex(picture) : ("0x" as const), description: description.trim(), website: website.trim(), twitter: twitter.trim(), telegram: telegram.trim() };
+  const profile = { image: "", description: description.trim(), website: website.trim(), twitter: twitter.trim(), telegram: telegram.trim() };
   const ready = !!coin.name && !!coin.symbol && !badAmount;
   const predicted = useReadContract({
     address: launcher,
@@ -142,8 +150,8 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
     ? "Name your coin"
     : !coin.symbol
       ? "Give it a ticker"
-      : coin.name.length > 32 || coin.symbol.length > 10
-        ? "Keep the name to 32 characters and the ticker to 10"
+      : coin.name.length > MAX_NAME || coin.symbol.length > MAX_SYMBOL
+        ? `Keep the name to ${MAX_NAME} characters and the ticker to ${MAX_SYMBOL}`
         : badAmount
           ? "That first-buy amount isn't a number"
           : balance !== undefined && devBuyWei > balance
@@ -151,7 +159,7 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
             : badLink
               ? "Links have to start with https://"
               : bytes(profile.description) > MAX_DESCRIPTION || [website, twitter, telegram].some((l) => bytes(l.trim()) > MAX_LINK)
-                ? "The description or a link is too long"
+                ? `Keep the description to ${MAX_DESCRIPTION} characters and each link to ${MAX_LINK}`
                 : bytes(plan.trim()) > MAX_PLAN
                   ? "The launch statement is limited to 500 characters"
                   : s.problem ?? (mismatch ? "The network's answer for the router address doesn't match. Try another RPC." : !token ? "Working out the coin's address…" : undefined);
@@ -190,11 +198,11 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
       <div className="form">
         <label className="field">
           <span className="field-label">Name</span>
-          <input className="input" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} placeholder="Monarch" />
+          <input className="input" value={name} maxLength={MAX_NAME} onChange={(e) => setName(e.target.value)} placeholder="Monarch" />
         </label>
         <label className="field">
           <span className="field-label">Ticker</span>
-          <input className="input" value={symbol} maxLength={10} onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/\s/g, ""))} placeholder="MNRC" />
+          <input className="input" value={symbol} maxLength={MAX_SYMBOL} onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/\s/g, ""))} placeholder="MNRC" />
         </label>
       </div>
       <p className="muted small field-help">The name and ticker are permanent.</p>
@@ -225,11 +233,15 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
 
       <h5>Picture and links</h5>
       <p className="muted small">
-        Ascend's site only lets a coin's fee wallet publish its art, and this coin's fee wallet is the router, so Monarchy keeps it and
-        shows it here. The picture itself is stored on chain with the coin, so it needs no hosting and can't go missing. You can change
-        it later as the router's steward.
+        The picture works as on Ascend's own form: a PNG, JPG, WebP or GIF under 2 MB, cropped to a square or kept as it is, and pinned to
+        IPFS. It's optional, and you can add or change it later as the router's steward. Ascend's site only lets a coin's fee wallet
+        publish art, and this coin's fee wallet is the router, so Monarchy keeps the picture's link and shows it here.
       </p>
-      <PicturePicker value={picture} onChange={setPicture} />
+      {UPLOAD_URL ? (
+        <ImagePicker value={image} onChange={setImage} />
+      ) : (
+        <p className="muted small">Picture uploads aren't set up on this site yet.</p>
+      )}
       <label className="field">
         <span className="field-label">Description</span>
         <textarea className="input textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -284,13 +296,14 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
           headroom
           disabledReason={problem}
           onDone={() => token && setLaunched(token)}
-          request={() =>
+          preparing={upload.step && UPLOAD_STEP[upload.step]}
+          request={async () =>
             token
               ? {
                   address: launcher,
                   abi: ascendV5LauncherAbi,
                   functionName: "launch",
-                  args: [coin, s.params(token, quote, swapper), profile, plan.trim()],
+                  args: [coin, s.params(token, quote, swapper), { ...profile, image: image ? await upload.uri(image) : "" }, plan.trim()],
                   value: native ? devBuyWei : 0n,
                 }
               : undefined
@@ -299,72 +312,46 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
           Launch {coin.symbol || "coin"}
         </TxButton>
       </WithApproval>
+      {image && (
+        <p className="muted small field-help">
+          With a picture, your wallet first asks for a free signature to upload it, then for the launch, as on Ascend.
+        </p>
+      )}
     </Card>
   );
 }
 
-/** A coin's picture from its bytes, shown only when they are a PNG, JPEG, WebP or GIF (and hidden if the browser can't
- * draw them after all). */
-function CoinArt({ data }: { data?: Uint8Array | `0x${string}` }) {
-  const src = useMemo(() => pictureUrl(data), [data]);
-  const [broken, setBroken] = useState<string>();
-  if (!src || broken === src) return null;
-  return <img className="coin-art" src={src} alt="" onError={() => setBroken(src)} />;
-}
-
-/** Choose the coin's picture from a file. The file is shrunk here, in the browser, to fit on chain (at most 24 KB,
- * 256 pixels square), and goes out with the transaction. */
-function PicturePicker({ value, onChange, current }: { value?: Uint8Array; onChange: (b?: Uint8Array) => void; current?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const pick = async (file?: File) => {
-    if (!file) return;
-    setBusy(true);
-    setError(undefined);
+/** Uploads a chosen picture once (a retried launch reuses the link) and says which step it is on. */
+function useImageUpload() {
+  const { address } = useConnection();
+  const chainId = useChainId();
+  const sign = useSignMessage();
+  const [step, setStep] = useState<"signing" | "uploading">();
+  const done = useRef(new WeakMap<CoinImage, string>());
+  const uri = async (img: CoinImage) => {
+    const have = done.current.get(img);
+    if (have) return have;
+    if (!address) throw new Error("Connect first");
     try {
-      onChange(await shrinkPicture(file));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const u = await uploadImage({ bytes: img.bytes, type: img.type, wallet: address, chainId, sign: (message) => sign.signMessageAsync({ message }), onStep: setStep });
+      done.current.set(img, u);
+      return u;
     } finally {
-      setBusy(false);
+      setStep(undefined);
     }
   };
-  return (
-    <div className="picture-pick">
-      {value ? <CoinArt data={value} /> : <div className="coin-art coin-art-empty" aria-hidden="true" />}
-      <div>
-        <div className="input-row">
-          <label className={`btn btn-ghost${busy ? " disabled" : ""}`}>
-            {busy ? "Shrinking…" : value ? "Choose another picture" : current ? "Choose a new picture" : "Choose a picture"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              hidden
-              disabled={busy}
-              onChange={(e) => {
-                void pick(e.target.files?.[0]);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          {value && (
-            <button className="btn btn-ghost" onClick={() => onChange(undefined)}>
-              {current ? "Keep the current one" : "Remove"}
-            </button>
-          )}
-        </div>
-        <p className={`small field-help ${error ? "warn" : "muted"}`}>
-          {error ??
-            (value
-              ? `${(value.length / 1000).toFixed(1)} KB, stored on chain with the transaction.`
-              : `PNG, JPEG, WebP or GIF. Big pictures are cropped square and shrunk to ${MAX_PICTURE / 1000} KB here, before anything is sent.`)}
-        </p>
-      </div>
-    </div>
-  );
+  return { step, uri };
 }
 
-type Edit = { description: string; website: string; twitter: string; telegram: string; picture?: Uint8Array; removePicture: boolean };
+/** A coin's picture from its ipfs:// link, hidden when the link isn't one or the picture doesn't load. */
+function CoinArt({ uri }: { uri?: string }) {
+  const src = imageUrl(uri);
+  const [broken, setBroken] = useState<string>();
+  if (!src || broken === src) return null;
+  return <img className="coin-art" src={src} alt="" referrerPolicy="no-referrer" onError={() => setBroken(src)} />;
+}
+
+type Edit = { description: string; website: string; twitter: string; telegram: string; image?: CoinImage; removeImage: boolean };
 
 /** A coin launched through Monarchy: its picture, description and links (kept by the launcher, since Ascend only
  * takes art from the fee wallet), editable by the router's steward. */
@@ -374,9 +361,10 @@ export function CoinProfileCard({ launcher, token, router }: { launcher: Address
   const p = useReadContract({ address: launcher, abi: ascendV5LauncherAbi, functionName: "profileOf", args: [token], query: { enabled: isSet(by.data), ...POLL.query } });
   const steward = useReadContract({ address: router, abi: lodestarAbi, functionName: "steward", query: { enabled: isSet(by.data) } });
   const [edit, setEdit] = useState<Edit>();
+  const upload = useImageUpload();
   if (!isSet(by.data) || !p.data) return null;
   const prof = p.data;
-  const hasPicture = !!pictureUrl(prof.image);
+  const hasPicture = !!prof.image;
   const links = [
     ["Website", prof.website],
     ["X", prof.twitter],
@@ -396,7 +384,7 @@ export function CoinProfileCard({ launcher, token, router }: { launcher: Address
   return (
     <Card title="The coin" right={<Badge tone="green">launched through Monarchy</Badge>}>
       <div className="coin-profile">
-        <CoinArt data={prof.image} />
+        <CoinArt uri={prof.image} />
         <div>
           {prof.description ? <p className="muted">{prof.description}</p> : <p className="muted small">No description yet.</p>}
           {links.length > 0 && (
@@ -410,24 +398,24 @@ export function CoinProfileCard({ launcher, token, router }: { launcher: Address
           )}
           <p className="muted small">
             Launched by <Addr address={by.data} />. Ascend's site only takes art from a coin's fee wallet, which here is the router, so this is
-            where the coin's picture and links live. The picture is stored on chain.
+            where the coin's picture and links live.
           </p>
         </div>
       </div>
       {isSteward && !e && (
         <button
           className="btn btn-ghost"
-          onClick={() => setEdit({ description: prof.description, website: prof.website, twitter: prof.twitter, telegram: prof.telegram, removePicture: false })}
+          onClick={() => setEdit({ description: prof.description, website: prof.website, twitter: prof.twitter, telegram: prof.telegram, removeImage: false })}
         >
           Edit
         </button>
       )}
       {isSteward && e && (
         <div className="form-block">
-          <PicturePicker value={e.picture} onChange={(b) => setEdit((cur) => cur && { ...cur, picture: b, removePicture: false })} current={hasPicture} />
-          {hasPicture && !e.picture && (
+          {UPLOAD_URL && <ImagePicker value={e.image} onChange={(img) => setEdit((cur) => cur && { ...cur, image: img, removeImage: false })} />}
+          {hasPicture && !e.image && (
             <label className="check">
-              <input type="checkbox" checked={e.removePicture} onChange={(ev) => setEdit({ ...e, removePicture: ev.target.checked })} />
+              <input type="checkbox" checked={e.removeImage} onChange={(ev) => setEdit({ ...e, removeImage: ev.target.checked })} />
               Remove the current picture
             </label>
           )}
@@ -454,21 +442,20 @@ export function CoinProfileCard({ launcher, token, router }: { launcher: Address
               headroom
               disabledReason={badEdit ? "Links have to start with https://, and stay short" : undefined}
               onDone={() => setEdit(undefined)}
-              request={() => ({
+              preparing={upload.step && UPLOAD_STEP[upload.step]}
+              request={async () => ({
                 address: launcher,
                 abi: ascendV5LauncherAbi,
                 functionName: "setProfile",
-                // an empty picture keeps the one on chain, unless it is being removed
                 args: [
                   token,
                   {
-                    image: e.picture ? bytesToHex(e.picture) : "0x",
+                    image: e.image ? await upload.uri(e.image) : e.removeImage ? "" : prof.image,
                     description: e.description.trim(),
                     website: e.website.trim(),
                     twitter: e.twitter.trim(),
                     telegram: e.telegram.trim(),
                   },
-                  !e.picture && e.removePicture,
                 ],
               })}
             >

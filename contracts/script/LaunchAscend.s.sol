@@ -15,11 +15,12 @@ import {AscendV5Launcher} from "../src/AscendV5Launcher.sol";
 ///   NAME, SYMBOL (permanent), TREASURY=<Team Treasury recipient, permanent>,
 ///   QUOTE=whype|usdc|kntq (default whype), FEE=1..10 (percent, default 3),
 ///   DEV_BUY=<first buy in the quote's base units, default 0> (on a WHYPE pair it is sent as HYPE and wrapped),
-///   IMAGE_HEX (the picture file, at most 24,000 bytes, stored on chain), DESCRIPTION, WEBSITE, TWITTER, TELEGRAM
-///   (kept by the launcher for Monarchy's site, since Ascend only takes art from the fee wallet), PLAN (an optional launch statement for Ascend's page),
+///   IMAGE=ipfs://<CID of the picture file, already pinned>, DESCRIPTION (up to 500 bytes), WEBSITE, TWITTER, TELEGRAM
+///   (up to 200 bytes each; kept by the launcher for Monarchy's site, since Ascend only takes art from the fee wallet),
+///   PLAN (an optional launch statement for Ascend's page),
 ///   SALT (default: from NAME and SYMBOL, so a second run finds the coin instead of launching another).
 /// The router's settings use ActivateLaunchpad's variables: BURN_BPS, HOLDERS_BPS, TREASURY_BPS, MAX_SLIPPAGE_BPS,
-/// TREASURY_WINDOW, LOCK_FOREVER, SWAPPER (`v4` = Monarchy's AscendV5Swapper). Send it with about 7M gas, plus about 5M for a full-size picture.
+/// TREASURY_WINDOW, LOCK_FOREVER, SWAPPER (`v4` = Monarchy's AscendV5Swapper). Send it with about 7M gas.
 contract LaunchAscend is LaunchpadsBase {
     function run() external {
         Launchpads memory d = _lpLoad();
@@ -75,8 +76,7 @@ contract LaunchAscend is LaunchpadsBase {
     }
 
     function _profile() internal view returns (AscendV5Launcher.Profile memory p) {
-        // the picture's bytes as hex, e.g. IMAGE_HEX=0x$(xxd -p coin.webp | tr -d '\n'), at most 24,000 bytes
-        p.image = vm.envOr("IMAGE_HEX", bytes(""));
+        p.image = vm.envOr("IMAGE", string(""));
         p.description = vm.envOr("DESCRIPTION", string(""));
         p.website = vm.envOr("WEBSITE", string(""));
         p.twitter = vm.envOr("TWITTER", string(""));

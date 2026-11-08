@@ -14,9 +14,8 @@
 #    trades the keeper distributes: the escrow's WHYPE credit is split to Exile lockers, the Team Treasury stream and
 #    the buyback (bought and burned at Ascend's BurnSink, or kept in reserve while Ascend's average price lags).
 # 5. The other way onto Ascend: LaunchAscend launches a new coin through Monarchy's AscendV5Launcher (named on the
-#    factory by the owner in step 1) with a picture file stored on chain, and its router as fee wallet from the first
-#    trade, so there is no wait. A second run sends nothing; after trades the keeper distributes and no creator fee
-#    ever reaches a wallet.
+#    factory by the owner in step 1), with its router as fee wallet from the first trade and no wait. A second run
+#    sends nothing; after trades the keeper distributes and no creator fee ever reaches a wallet.
 # The deployments file goes to deployments/launchpads/rehearsal.json (git-ignored) and the anvil log to $TMPDIR.
 # Needs forge, cast, anvil and jq. KEEP_ANVIL=1 leaves the node running at the end (for the website, with
 # VITE_LAUNCHPADS_REHEARSAL=1 and VITE_MAINNET_RPC_URL pointing at it).
@@ -158,11 +157,10 @@ keeper >/dev/null
 echo "ok: a second keeper run right after goes through"
 
 echo "== 5. Launch a new coin through Monarchy: the router is the fee wallet from the first trade"
-# a real picture file, stored on chain with the launch
-IMAGE_HEX=0x$(od -An -v -tx1 web/public/apple-touch-icon.png | tr -d ' \n')
+IMAGE=ipfs://bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy
 launch() {
   PRIVATE_KEY=$CREATOR_KEY NAME="Rehearsal Monarch" SYMBOL=RMON TREASURY=$TREASURY SWAPPER=v4 FEE=5 \
-    DEV_BUY=1000000000000000000 IMAGE_HEX=$IMAGE_HEX DESCRIPTION="Launched through Monarchy." WEBSITE=https://example.com \
+    DEV_BUY=1000000000000000000 IMAGE=$IMAGE DESCRIPTION="Launched through Monarchy." WEBSITE=https://example.com \
     PLAN="The first buy is the team's." script LaunchAscend.s.sol
 }
 launch
@@ -179,7 +177,7 @@ check "its lock binds at once" '[ "$(call "$NEW" "creatorRoleLocked()(bool)")" =
 check "the creator is its steward" '[ "$(call "$NEW" "steward()(address)")" = "$CREATOR" ]'
 check "the creator got the first buy" '[ "$(call "$TOKEN" "balanceOf(address)(uint256)" "$CREATOR" | num)" != 0 ]'
 check "the pool fee is the 5% asked for" '[ "$(call "$(call "$SOURCE" "launchpad()(address)")" "currentFee(bytes32)(uint24)" "$NEWPOOL" | num)" = 50000 ]'
-check "the launcher keeps the coin's picture, byte for byte" 'call "$LAUNCHER" "profileOf(address)((bytes,string,string,string,string))" "$TOKEN" | grep -qi "($IMAGE_HEX,"'
+check "the launcher keeps the coin's art" 'call "$LAUNCHER" "profileOf(address)((string,string,string,string,string))" "$TOKEN" | grep -q "$IMAGE"'
 NONCE=$(cast nonce "$CREATOR" --rpc-url "$RPC")
 launch
 check "a second run sends nothing" '[ "$(cast nonce "$CREATOR" --rpc-url "$RPC")" = "$NONCE" ]'

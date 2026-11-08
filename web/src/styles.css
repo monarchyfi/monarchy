@@ -766,9 +766,27 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
 .picture-pick { display: flex; gap: 14px; align-items: center; margin: 12px 0; }
 .picture-pick > div { min-width: 0; }
 .picture-pick .field-help { margin: 6px 0 0; }
-.picture-pick label.btn { cursor: pointer; }
-.picture-pick label.btn.disabled { color: var(--faint); border-style: dashed; cursor: progress; }
-.coin-art-empty { border-style: dashed; }
+.input-row.wrap { flex-wrap: wrap; }
+.image-dialog { background: var(--card); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 18px 20px 20px; width: min(340px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.image-dialog::backdrop { background: rgba(0, 0, 0, 0.75); }
+.image-dialog-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.image-dialog-head h3 { margin: 0; font: 700 13px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.14em; }
+.image-dialog .btn-icon { padding: 6px 10px; }
+.image-dialog > p { margin: 8px 0; }
+.image-format { display: flex; border: 1px solid var(--line-2); border-radius: var(--radius-sm); }
+.image-format button { flex: 1; min-width: 0; padding: 9px 8px; background: transparent; color: var(--muted); border: 0; font: 600 11.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; cursor: pointer; }
+.image-format button + button { border-left: 1px solid var(--line-2); }
+.image-format button[aria-pressed="true"] { background: var(--white); color: #000; }
+.image-format button:focus-visible { outline: none; box-shadow: var(--focus); }
+.image-viewport { position: relative; overflow: hidden; margin: 14px auto 6px; max-width: 100%; background: #000; border: 1px solid var(--line-2); touch-action: none; cursor: grab; user-select: none; }
+.image-viewport:active { cursor: grabbing; }
+.image-viewport:focus-visible { outline: none; box-shadow: var(--focus); }
+.image-viewport.is-original { cursor: default; display: flex; align-items: center; justify-content: center; }
+.image-viewport.is-original img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.image-zoom { display: flex; gap: 10px; align-items: center; margin: 6px 0 14px; }
+.image-zoom input[type="range"] { flex: 1; min-width: 0; accent-color: var(--white); }
+.image-zoom .field-label { margin: 0; }
+.coin-art.coin-art-empty { border-style: dashed; background: transparent; }
 .handover td { white-space: normal; vertical-align: top; }
 .handover td:first-child, .handover td:last-child { white-space: nowrap; }
 .coin-art { width: 72px; height: 72px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--line-2); flex: none; background: #000; }
