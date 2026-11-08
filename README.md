@@ -34,7 +34,7 @@ On Ascend the creator role collects a share of every swap fee: half of a 1% fee 
 
 ### On Ascend's mainnet launchpad (v5)
 
-Ascend v5 gives each coin a creator escrow. A Vanilla coin's creator proposes its Lodestar as the escrow's recipient, and 48 hours later anyone completes the hand-off; from then on every fee the escrow releases is routed. Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
+Ascend v5 gives each coin a creator escrow. A Vanilla coin's creator proposes its Lodestar as the escrow's recipient, and 48 hours later anyone completes the hand-off; from then on every fee the escrow releases is routed. Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
 
 ### On Eleos, Kleos and Boxa
 
@@ -132,13 +132,14 @@ contracts/src        Lodestar, LodestarFactory, AscendSwapper, Exile, Sandfall, 
                      sources/ (the Ascend, Eleos, Kleos and Boxa adapters), interfaces, mocks
 contracts/test       Foundry tests, including a full mock-Ascend integration test and fork/ (the real
                      Eleos, Kleos and Boxa hooks on an Elysium mainnet fork)
-contracts/script     DeployMocks, DeployCore, LaunchOnAscend, ActivateLodestar, DemoFlow; for Eleos, Kleos
-                     and Boxa: DeployLaunchpads, FinishLaunchpads, ActivateLaunchpad
+contracts/script     DeployMocks, DeployCore, LaunchOnAscend, ActivateLodestar, DemoFlow; for Eleos, Kleos,
+                     Boxa and Ascend v5: DeployLaunchpads, FinishLaunchpads, ActivateLaunchpad
 deployments/         <chainId>.json written by the scripts and read by the website; launchpads/<chainId>.json
-                     for Eleos, Kleos and Boxa
+                     for Eleos, Kleos, Boxa and Ascend v5
 web/                 Vite + React + wagmi site (landing page, Kingdom overview, Lodestar, Exile, Sandfall)
 docs/                Architecture notes, the Eleos, Kleos and Boxa guide, and the demo script
-tools/               demo-local.sh, keeper scripts, rehearse-launchpads.sh, export-abis.mjs, offline solc shim
+tools/               demo-local.sh, keeper scripts, rehearse-launchpads.sh, rehearse-ascend-v5.sh, export-abis.mjs,
+                     offline solc shim
 ```
 
 ## Quickstart
@@ -211,16 +212,16 @@ If buybacks through the Infinity vault misbehave, Lodestar keeps the buyback sha
 
 The keeper (`.github/workflows/distribute.yml`) calls `distribute()` every 3 hours from a wallet that holds only gas money, set as the `KEEPER_PRIVATE_KEY` Actions secret. Each run checks that `RPC_URL` serves chain 99801, lets `cast` estimate the gas, and fails when the receipt shows a revert, so a broken distribute is a red run rather than a green one. When Exile's reward pool is more than 6 hours behind (after an outage), the run first catches it up with `poke`, one call's worth of hours at a time, so the payouts inside `distribute()` stay light. If `distribute()` fails or a holder payout is parked, it catches up again and tries once more.
 
-### Eleos, Kleos and Boxa on Elysium mainnet
+### Eleos, Kleos, Boxa and Ascend v5 on Elysium mainnet
 
-`DeployLaunchpads`, then `FinishLaunchpads` 12 hours later, deploy the shared core, an adapter, a V4Swapper per pool manager and a factory per launchpad; creators activate with `ActivateLaunchpad`, and `tools/keeper-launchpads.sh` keeps every router distributing and harvesting. `tools/rehearse-launchpads.sh` runs all of it on a local fork first. The steps, the owner's powers and the per-launchpad details are in [docs/launchpads.md](docs/launchpads.md).
+`DeployLaunchpads`, then `FinishLaunchpads` 12 hours later, deploy the shared core, an adapter, a buyback swapper per pool manager and a factory per launchpad; creators activate with `ActivateLaunchpad`, and `tools/keeper-launchpads.sh` keeps every router distributing and harvesting. `tools/rehearse-launchpads.sh` and `tools/rehearse-ascend-v5.sh` run all of it on a local fork first. The steps, the owner's powers and the per-launchpad details are in [docs/launchpads.md](docs/launchpads.md).
 
 ## Status and roadmap
 
 | | |
 |---|---|
 | **Working** | Lodestar, Exile and Sandfall live on Elysium testnet with two demo tokens (USDC and stock quotes); burns, buybacks and token rewards to lockers proven on Ascend's pools; web app for all three at monarchy.fi, with the Garden, an analytics page listing every lock, stream and router; docs at docs.monarchy.fi; CI on every change |
-| **Built, not deployed** | Eleos, Kleos and Boxa support: native HYPE routing, a dividend harvest in Exile, Uniswap v4 buybacks, and mainnet deploy, activation and keeper scripts, tested against the real launchpads on a mainnet fork and rehearsed end to end on a local one |
+| **Built, not deployed** | Eleos, Kleos, Boxa and Ascend v5 support: native HYPE and WHYPE/USDC/KNTQ routing, a dividend harvest in Exile, Uniswap v4 buybacks, Ascend's 48 hour hand-off with an accept step on the site and in the keeper, and mainnet deploy, activation and keeper scripts, tested against the real launchpads on a mainnet fork and rehearsed end to end on a local one |
 | **In progress** | A testnet redeploy with the latest security review fixes |
 | **Before launch** | Third-party security audit, the upgrade multisig shared with the Ascend team, mainnet deploy (Eleos, Kleos and Boxa after Elysium's public launch on November 9), Monarchy token launch on Ascend |
 | **Next** | Website support for Eleos, Kleos and Boxa coins, kHYPE treasury option, TWAP buybacks, Ascend NFT holder bonus in Exile, an indexer for history and APR charts |

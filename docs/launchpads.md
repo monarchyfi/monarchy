@@ -92,14 +92,17 @@ Deploy only after Elysium's public launch on November 9 (until then transactions
 ```bash
 export RPC_URL=<an Elysium mainnet RPC> PRIVATE_KEY=<the deployer> FACTORY_OWNER=<the Safe>
 
-# 1. The shared core, the adapters with their hooks, a V4Swapper per pool manager and a factory per launchpad.
-#    Proposes the three factories as Exile registrars and hands Exile to FACTORY_OWNER.
+# 1. The shared core, the adapters with their hooks, a buyback swapper per pool manager and a factory per launchpad
+#    (Ascend v5 included: its adapter, an AscendV5Swapper and its factory, see docs/ascend-v5.md).
+#    Proposes the Eleos, Kleos and Boxa factories as Exile registrars and hands Exile to FACTORY_OWNER.
 #    Writes deployments/launchpads/99901.json. Safe to re-run: it only deploys what the file doesn't record.
 forge script contracts/script/DeployLaunchpads.s.sol --rpc-url $RPC_URL --broadcast --slow
 
 # 2. The Safe calls Exile.acceptOwner().
 
-# 3. Twelve hours later (and within 7 days), any funded key adds the registrars. Activations can start then.
+# 3. Twelve hours later (and within 7 days), any funded key adds the registrars. Activations can start then
+#    (Ascend v5 activations can start right after step 1: its coins pay no dividends, so its factory needs no
+#    registrar).
 forge script contracts/script/FinishLaunchpads.s.sol --rpc-url $RPC_URL --broadcast --slow
 
 # 4. The keeper: set the MAINNET_KEEPER_PRIVATE_KEY secret (a wallet that only holds gas) and the
@@ -110,15 +113,15 @@ forge script contracts/script/FinishLaunchpads.s.sol --rpc-url $RPC_URL --broadc
 
 **Verify the sources.** elysiumexplore.com answers the Etherscan API shape at `https://elysiumexplore.com/api` (its `getabi` returns the verified Eleos hook), so `forge verify-contract <address> <path>:<Contract> --verifier etherscan --verifier-url https://elysiumexplore.com/api --etherscan-api-key any --chain 99901 --constructor-args <...>` should work; it hasn't been tried yet because nothing is deployed.
 
-**Rehearse first.** `ELYSIUM_RPC_URL=https://rpc.eleos.fun tools/rehearse-launchpads.sh` runs the whole rollout on a local anvil fork of mainnet and sends nothing to the real chain: deploy, the 12 hour wait, finish, the multisig accepting Exile, an activation on each launchpad as the creator (TST2255 on Eleos, BULL on Kleos hook A, CHUD on Boxa's pairs hook, all with a holder share), a locker locking each coin, trading, and two keeper runs. It checks that every router paid lockers and the treasury, that Exile harvested dividends on all three, that the phase 2 router (BULL, `SWAPPER=v4`) bought back and burned while the others kept the buyback share in reserve, and that a second keeper run right after doesn't buy back again inside the 30 minute interval.
+**Rehearse first.** `tools/rehearse-ascend-v5.sh` does the same for Ascend v5 on a fork of the latest block (see docs/ascend-v5.md). `ELYSIUM_RPC_URL=https://rpc.eleos.fun tools/rehearse-launchpads.sh` runs the whole rollout on a local anvil fork of mainnet and sends nothing to the real chain: deploy, the 12 hour wait, finish, the multisig accepting Exile, an activation on each launchpad as the creator (TST2255 on Eleos, BULL on Kleos hook A, CHUD on Boxa's pairs hook, all with a holder share), a locker locking each coin, trading, and two keeper runs. It checks that every router paid lockers and the treasury, that Exile harvested dividends on all three, that the phase 2 router (BULL, `SWAPPER=v4`) bought back and burned while the others kept the buyback share in reserve, and that a second keeper run right after doesn't buy back again inside the 30 minute interval.
 
 ## The keeper
 
-`tools/keeper-launchpads.sh`, run every 3 hours by the `distribute-mainnet` job in `.github/workflows/distribute.yml`, walks every router the three factories have made (`allLodestars`): creators activate without asking anyone, and the keeper serves them all. For each router it:
+`tools/keeper-launchpads.sh`, run every 3 hours by the `distribute-mainnet` job in `.github/workflows/distribute.yml`, walks every router the factories have made (`allLodestars`): creators activate without asking anyone, and the keeper serves them all. For each router it:
 
-1. skips it if it doesn't hold its coin's creator role, or if its swapper is neither none nor a V4Swapper from the deployments file (the creator picks the swapper, and the keeper's gas shouldn't run code Monarchy didn't deploy);
+1. if it doesn't hold its coin's creator role, calls its `acceptCreator()` when a dry run says that goes through (an Ascend v5 activation once Ascend's 48 hour wait is over), and otherwise skips it; it also skips a router whose swapper is neither none nor a swapper from the deployments file (the creator picks the swapper, and the keeper's gas shouldn't run code Monarchy didn't deploy);
 2. catches its Exile pool up when it is more than 6 hours behind;
-3. calls `distribute()` when there is something to route (at least `MIN_ROUTE_WEI` of HYPE claimable on the launchpad or held by the router, at least `MIN_ROUTE_TOKENS` of the coin, a parked payout, or a buyback reserve with a swapper once 30 minutes have passed since the last buyback), with one retry if a holder payout was parked;
+3. calls `distribute()` when there is something to route (at least `MIN_ROUTE_WEI` of the quote claimable on the launchpad or held by the router, on Ascend v5 also the pool's fees not yet paid to its escrow, at least `MIN_ROUTE_TOKENS` of the coin, a parked payout, or a buyback reserve with a swapper once 30 minutes have passed since the last buyback), with one retry if a holder payout was parked. `MIN_ROUTE_WEI` is for 18 decimals and is scaled to a quote with fewer (USDC's 6);
 4. calls `Exile.harvest(coin)` when a dry run says it brings in at least `MIN_HARVEST_WEI`. This comes after distribute, because on Eleos the `process` inside distribute is what pays the holder share into the coin.
 
 The minimums keep dust from costing a send on every run: a router takes HYPE from anyone, so without them 1 wei would count as work. Amounts below them aren't lost; they wait for a run where there's more. The defaults are 0.001 HYPE for a distribute (`MIN_ROUTE_WEI`, about ten times its gas at Elysium's 0.2 gwei), one whole coin for the token side (`MIN_ROUTE_TOKENS`), and 0.00001 HYPE for a harvest (`MIN_HARVEST_WEI`, about its gas: only trades put dividends there, so the minimum only stops a harvest that costs more than it brings). Each can be changed with a repository variable of the same name prefixed `MAINNET_` (for example `MAINNET_MIN_ROUTE_WEI`), and 1 routes anything.
@@ -154,4 +157,4 @@ The plan is a Safe 2-of-2 with one key held by the Ascend launchpad team. **Reco
 
 - `forge test` runs the unit suites, including native HYPE routing, one-step handover and both rescues, the harvest shapes and their checks, the harvest pool lock rule, and the v4 pieces on a mock pool manager. The fork suites skip without an RPC.
 - `ELYSIUM_RPC_URL=https://rpc.eleos.fun forge test --match-path "contracts/test/fork/*Fork.t.sol"` runs 29 tests against the real hooks and pool managers on a fork (`ELYSIUM_FORK_BLOCK` pins a block): views, activation in both orders, claim and distribute on every hook kind, the dev's earlier fees staying the dev's, buybacks through `V4Swapper` on all four pool managers, harvests on every supported shape, the refusals, the steward handing the role back, and a role sent to another coin's router coming back on Eleos and Kleos.
-- `tools/rehearse-launchpads.sh` runs the deploy, activation and keeper scripts end to end on an anvil fork.
+- `tools/rehearse-launchpads.sh` runs the deploy, activation and keeper scripts end to end on an anvil fork, and `tools/rehearse-ascend-v5.sh` does it for Ascend v5.

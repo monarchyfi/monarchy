@@ -10,3 +10,7 @@ export { v4FeeSourceAbi } from "./V4FeeSource";
 export { iEleosHookAbi } from "./IEleosHook";
 export { iKleosHookAbi } from "./IKleosHook";
 export { iBoxaHookAbi } from "./IBoxaHook";
+export { ascendV5FeeSourceAbi } from "./AscendV5FeeSource";
+export { iAscendV5LaunchpadAbi } from "./IAscendV5Launchpad";
+export { iAscendV5EscrowAbi } from "./IAscendV5Escrow";
+export { iAscendV5SeatAbi } from "./IAscendV5Seat";

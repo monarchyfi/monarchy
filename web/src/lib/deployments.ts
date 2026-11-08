@@ -19,7 +19,7 @@ export type Deployment = {
   poolId: Hex;
   lodestar: Address;
   startBlock: number;
-  /** Eleos, Kleos and Boxa on this chain (deployments/launchpads/<chainId>.json), which share this Exile and Sandfall. */
+  /** Eleos, Kleos, Boxa and Ascend v5 on this chain (deployments/launchpads/<chainId>.json), which share this Exile and Sandfall. */
   pads?: LaunchpadsDeployment;
 };
 
@@ -30,8 +30,8 @@ const files = import.meta.glob<Deployment>("../../../deployments/*.json", { eage
 const byChain: Record<number, Deployment> = {};
 for (const d of Object.values(files)) byChain[d.chainId] = d;
 
-// A chain with only the launchpads' deployment (Elysium mainnet before Ascend arrives there) still gets one, built
-// from the shared core, so Exile, Sandfall and the Garden work there. It has no Ascend launchpad and no featured
+// A chain with only the launchpads' deployment (Elysium mainnet, where Ascend v5 is one of the launchpads) still gets
+// one, built from the shared core, so Exile, Sandfall and the Garden work there. It has no Ascend testnet launchpad and no featured
 // token: every Ascend-only field is zero.
 for (const pads of Object.values(launchpadsByChain)) {
   const d = byChain[pads.chainId];

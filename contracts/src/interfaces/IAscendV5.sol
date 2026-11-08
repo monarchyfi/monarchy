@@ -48,3 +48,10 @@ interface IAscendV5Escrow {
     /// @notice address(0) when the pool did not opt in to community takeovers.
     function ctoRegistry() external view returns (address);
 }
+
+/// @notice Ascend's seat contract, the recipient of Holder Rewards, Buyback and Custom mix coins: its split is fixed at
+/// launch and it never proposes a new recipient. `escrow()` names the pool's escrow, which is how a site tells a seat
+/// from a creator's own wallet or multisig.
+interface IAscendV5Seat {
+    function escrow() external view returns (address);
+}

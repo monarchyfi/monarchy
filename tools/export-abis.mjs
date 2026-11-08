@@ -19,6 +19,11 @@ const contracts = [
   "ILaunchpadHooks:IEleosHook",
   "ILaunchpadHooks:IKleosHook",
   "ILaunchpadHooks:IBoxaHook",
+  // Ascend v5 on Elysium mainnet: its adapter, launchpad, per-pool escrow and seat contract
+  "AscendV5FeeSource",
+  "IAscendV5:IAscendV5Launchpad",
+  "IAscendV5:IAscendV5Escrow",
+  "IAscendV5:IAscendV5Seat",
 ];
 const outDir = join(root, "web/src/abi");
 mkdirSync(outDir, { recursive: true });

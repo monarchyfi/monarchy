@@ -29,7 +29,7 @@ export function LodestarPage() {
   const defaultToken = d && isSet(d.token) ? d.token : undefined;
   const [defaultMeta, defaultQuoteMeta] = useTokenMeta([defaultToken, d?.quote]);
   if (!d) return <NoDeployment />;
-  // Elysium mainnet before Ascend is there: the coins to activate are on Eleos, Kleos and Boxa
+  // Elysium mainnet: the coins to activate are on Eleos, Kleos, Boxa and Ascend v5
   if (d.pads && d.mode === "launchpads") return <PadsLodestar pads={d.pads} />;
   const token = isAddress(input) ? input : defaultToken;
   const badInput = input !== "" && !isAddress(input);
@@ -115,15 +115,25 @@ function ForToken({ d, token, quote }: { d: Deployment; token: Address; quote: A
 }
 
 /** Where a router lives: the Exile and factory it was made with, and the launchpad that holds its coin's creator
- * role. `launchpad` is Ascend's, for its listing set-aside; routers on Eleos, Kleos and Boxa have none. */
-export type RouterEnv = { exile: Address; factory: Address; launchpad?: Address; venue: string; priceRef: string };
+ * role. `launchpad` is Ascend testnet's, for its listing set-aside; routers on Eleos, Kleos, Boxa and Ascend v5 have
+ * none. `lockNote` adds to the creator lock's footnote what else can move the role on this launchpad. */
+export type RouterEnv = {
+  exile: Address;
+  factory: Address;
+  launchpad?: Address;
+  venue: string;
+  priceRef: string;
+  lockNote?: React.ReactNode;
+  /** The least gas a distribute is sent with (Ascend v5: its escrow's payout needs about 600,000 left). */
+  distributeGas?: bigint;
+};
 
 const ascendEnv = (d: Deployment): RouterEnv => ({ exile: d.exile, factory: d.factory, launchpad: d.launchpad, venue: "Ascend", priceRef: "Ascend's EMA" });
 
 /** Distribute, after catching Exile's reward pool up when a long pause left it far behind. distribute catches it up
  * itself, but then it needs more gas than a wallet estimates (and older routers park the payouts without moving
  * the pool), so like the keeper the card pokes the pool forward first, EXILE_CATCH_UP_HOURS per transaction. */
-function DistributeButton({ exile, lodestar, exilePoolId }: { exile: Address; lodestar: Address; exilePoolId?: bigint }) {
+function DistributeButton({ exile, lodestar, exilePoolId, minGas }: { exile: Address; lodestar: Address; exilePoolId?: bigint; minGas?: bigint }) {
   const poke = exilePoolId === undefined ? undefined : ({ address: exile, abi: exileAbi, functionName: "poke", args: [exilePoolId, BigInt(EXILE_CATCH_UP_HOURS)] } as const);
   // what one catch-up costs right now: a few idle hours cost little, weeks of expiring locks cost millions
   const catchUp = useEstimateGas({ to: exile, data: poke && encodeFunctionData(poke), query: { enabled: !!poke, ...POLL.query } });
@@ -136,7 +146,7 @@ function DistributeButton({ exile, lodestar, exilePoolId }: { exile: Address; lo
           <TxButton request={() => poke}>Catch up rewards</TxButton>
         </>
       )}
-      <TxButton headroom disabledReason={heavy ? "Catch up rewards first" : undefined} request={() => ({ address: lodestar, abi: lodestarAbi, functionName: "distribute" })}>
+      <TxButton headroom minGas={minGas} disabledReason={heavy ? "Catch up rewards first" : undefined} request={() => ({ address: lodestar, abi: lodestarAbi, functionName: "distribute" })}>
         Distribute
       </TxButton>
     </>
@@ -177,6 +187,8 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
     ],
     query: { enabled: !!core.poolId && isSet(env.launchpad), ...POLL.query },
   });
+  // routers from before Ascend v5 don't have creatorRoleLocked: a failed read means the lock binds whenever it is set
+  const binds = useReadContract({ ...l, functionName: "creatorRoleLocked", query: { retry: false, ...POLL.query } });
   // routers and factories from before the upgrade path don't have these, so a failed read means none
   const up = useReadContracts({
     contracts: [
@@ -205,6 +217,10 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
   const listingLive = election !== 0n && (election & ((1n << 160n) - 1n)) === BigInt(lodestar);
   const isSteward = !!address && address.toLowerCase() === core.steward?.toLowerCase();
   const lockForever = lockedUntil >= 2n ** 63n;
+  const lockSet = Number(lockedUntil) > now;
+  // on Ascend v5 the lock is set at deploy but only binds once the router holds the role, 48 hours later; until
+  // then the creator can still call the hand-off off
+  const lockWaiting = lockSet && !isCreator && binds.data === false;
 
   return (
     <>
@@ -217,7 +233,13 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
         right={
           <div className="lock-badges">
             {isCreator ? <Badge tone="green">Holds the creator role</Badge> : <Badge tone="red">Not the creator</Badge>}
-            {Number(lockedUntil) > now ? <Badge tone="gold">Role locked {lockForever ? "forever" : `until ${date(lockedUntil)}`}</Badge> : <Badge tone="amber">Role not locked</Badge>}
+            {lockWaiting ? (
+              <Badge tone="amber">Lock starts when the router holds the role</Badge>
+            ) : lockSet ? (
+              <Badge tone="gold">Role locked {lockForever ? "forever" : `until ${date(lockedUntil)}`}</Badge>
+            ) : (
+              <Badge tone="amber">Role not locked</Badge>
+            )}
             {upEta > 0n && <Badge tone="amber">Upgrade proposed</Badge>}
             <Badge tone="grey">No fees</Badge>
           </div>
@@ -237,7 +259,7 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
         <div className="summary">
           <Row k="Router" v={<Addr address={lodestar} />} />
           <Row k="Steward" v={<Addr address={core.steward} />} />
-          {Number(lockedUntil) > now && <Row k="Creator role" v={`Locked ${lockForever ? "forever" : `until ${date(lockedUntil)}`}*`} />}
+          {lockSet && <Row k="Creator role" v={`${lockWaiting ? "Will be locked" : "Locked"} ${lockForever ? "forever" : `until ${date(lockedUntil)}`}*`} />}
           {/* Eleos, Kleos and Boxa take no tax in the coin, so only Ascend routers have token-side fees to route */}
           {env.launchpad && <Row k="Token-side fees" v={cfg.tokenToHolders ? <Badge tone="gold">All paid to Exile lockers</Badge> : <Badge tone="grey">All burned</Badge>} />}
           <Row k="Buyback route" v={cfg.swapper === ZERO ? <Badge tone="amber">None: buybacks wait in reserve</Badge> : <Addr address={cfg.swapper} />} />
@@ -245,9 +267,10 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
           {listingLive && <Row k="Listing set-aside" v={<><Badge tone="green">Enrolled</Badge> {fmt(owed, qd)} of {fmt(owed + (election >> 168n), qd)} {qs} saved</>} />}
           <Row k="Last distribute" v={Number(lastAt) ? `${duration(now - Number(lastAt))} ago` : "never"} />
         </div>
-        {Number(lockedUntil) > now && (
+        {lockSet && (
           <p className="footnote">
-            * The one way out is a move to this token's router on a newer Monarchy factory, approved by Monarchy and the steward and announced here 7 days ahead.{" "}
+            * {lockWaiting ? "Once the router holds the role, the" : "The"} one way out Monarchy allows is a move to this token's router on a newer Monarchy factory, approved by Monarchy and the steward and announced here 7 days ahead.
+            {env.lockNote ? <> {env.lockNote}</> : null}{" "}
             <a href="https://github.com/monarchy-fi/monarchy#security-model" target="_blank" rel="noreferrer">
               How upgrades work
             </a>
@@ -265,7 +288,7 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
         </div>
         <p className="muted small">Plus any fees still sitting in the pool, which distribute collects first.</p>
         <p className="small cadence">{DISTRIBUTE_NOTE}</p>
-        <DistributeButton exile={env.exile} lodestar={lodestar} exilePoolId={core.exilePoolId} />
+        <DistributeButton exile={env.exile} lodestar={lodestar} exilePoolId={core.exilePoolId} minGas={env.distributeGas} />
       </Card>
 
       {eta > 0n && (

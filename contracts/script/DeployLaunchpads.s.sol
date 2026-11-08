@@ -9,6 +9,7 @@ import {Lodestar} from "../src/Lodestar.sol";
 import {LodestarFactory} from "../src/LodestarFactory.sol";
 import {V4PriceObserver} from "../src/V4PriceObserver.sol";
 import {V4Swapper} from "../src/V4Swapper.sol";
+import {AscendV5Swapper} from "../src/AscendV5Swapper.sol";
 import {IV4PoolManager} from "../src/interfaces/IUniswapV4.sol";
 import {IExile} from "../src/interfaces/IExile.sol";
 import {ISandfall} from "../src/interfaces/ISandfall.sol";
@@ -16,22 +17,27 @@ import {IFeeSource} from "../src/interfaces/IFeeSource.sol";
 import {EleosFeeSource} from "../src/sources/EleosFeeSource.sol";
 import {KleosFeeSource} from "../src/sources/KleosFeeSource.sol";
 import {BoxaFeeSource} from "../src/sources/BoxaFeeSource.sol";
+import {AscendV5FeeSource} from "../src/sources/AscendV5FeeSource.sol";
+import {IAscendV5Launchpad} from "../src/interfaces/IAscendV5.sol";
 
-/// @notice Step 1 of 2 for Monarchy on Eleos, Kleos and Boxa (Elysium mainnet). Deploys what
+/// @notice Step 1 of 2 for Monarchy on Eleos, Kleos, Boxa and Ascend v5 (Elysium mainnet). Deploys what
 /// deployments/launchpads/<chainId>.json doesn't already record, so a run that stopped halfway can be repeated:
 /// - the shared core: Exile, Sandfall, the Lodestar implementation (reused from deployments/<chainId>.json when the
 ///   Ascend core is already on this chain, so every Monarchy router shares one Exile) and the V4PriceObserver;
-/// - per launchpad: its adapter with the known hooks, a V4Swapper per pool manager, and a LodestarFactory with no
-///   default swapper (phase 1: the buyback share waits in each router's reserve until a swapper is set).
+/// - per launchpad: its adapter with the known hooks, a buyback swapper per pool manager (a V4Swapper; on Ascend v5 an
+///   AscendV5Swapper), and a LodestarFactory with no default swapper (phase 1: the buyback share waits in each
+///   router's reserve until a swapper is set, unless the creator picks Monarchy's swapper at activation).
 /// FACTORY_OWNER (required) owns every factory and adapter and is handed Exile; on mainnet it must be a multisig.
 /// Each factory names its routers' harvests in Exile, so it has to become an Exile registrar, which takes 12 hours:
-/// this script proposes all three, and FinishLaunchpads adds them once the timelock has passed (anyone may run it).
+/// this script proposes the Eleos, Kleos and Boxa factories, and FinishLaunchpads adds them once the timelock has
+/// passed (anyone may run it). Ascend v5 coins pay no holder dividends, so its factory never needs the role.
 /// Exile goes to FACTORY_OWNER in the same run, so the multisig must then call `Exile.acceptOwner()`.
-/// No router can activate before FinishLaunchpads.
+/// No Eleos, Kleos or Boxa router can activate before FinishLaunchpads. On a fork from before Ascend v5 went live
+/// (block 422319) the Ascend pad is skipped.
 contract DeployLaunchpads is LaunchpadsBase {
     function run() external {
         bool rehearsal = block.chainid == 31337;
-        require(block.chainid == ELYSIUM_MAINNET || rehearsal, "Eleos, Kleos and Boxa are on Elysium mainnet (99901)");
+        require(block.chainid == ELYSIUM_MAINNET || rehearsal, "the launchpads are on Elysium mainnet (99901)");
         uint256 pk = _deployerKey();
         address me = vm.addr(pk);
         Launchpads memory d = _lpLoad();
@@ -71,7 +77,7 @@ contract DeployLaunchpads is LaunchpadsBase {
         bool exileMine = exile.owner() == me;
         for (uint256 i; i < PADS; ++i) {
             address f = d.pads[i].factory;
-            if (exile.isRegistrar(f)) continue;
+            if (!_needsRegistrar(i) || !_has(f) || exile.isRegistrar(f)) continue;
             uint64 eta = exile.registrarEta(f);
             // a proposal still inside its window would only restart its 12 hours
             if (eta != 0 && block.timestamp <= eta + exile.EXECUTION_WINDOW()) continue;
@@ -91,6 +97,10 @@ contract DeployLaunchpads is LaunchpadsBase {
         console2.log("Lodestar implementation", d.lodestarImpl);
         console2.log("V4PriceObserver", d.observer);
         for (uint256 i; i < PADS; ++i) {
+            if (!_has(d.pads[i].factory)) {
+                console2.log(_padName(i), "skipped: the launchpad isn't on this chain (or this fork's block)");
+                continue;
+            }
             console2.log(_padName(i), "factory", d.pads[i].factory);
             console2.log(_padName(i), "adapter", d.pads[i].source);
         }
@@ -101,18 +111,37 @@ contract DeployLaunchpads is LaunchpadsBase {
 
     function _deployPad(Launchpads memory d, uint256 i, address owner) internal returns (Pad memory p) {
         p = d.pads[i];
+        // a rehearsal fork from before Ascend v5 went live has no launchpad to adapt
+        if (i == ASCEND && ASCEND_V5_LAUNCHPAD.code.length == 0) return p;
         (address[] memory hooks, uint8[] memory kinds, address[] memory pms) = _registry(i);
         V4PriceObserver observer = V4PriceObserver(d.observer);
         if (!_has(p.source)) {
-            if (i == 0) p.source = address(new EleosFeeSource(observer, owner, hooks, kinds));
-            else if (i == 1) p.source = address(new KleosFeeSource(observer, owner, hooks, kinds));
-            else p.source = address(new BoxaFeeSource(observer, owner, hooks, kinds));
+            if (i == 0) {
+                p.source = address(new EleosFeeSource(observer, owner, hooks, kinds));
+            } else if (i == 1) {
+                p.source = address(new KleosFeeSource(observer, owner, hooks, kinds));
+            } else if (i == 2) {
+                p.source = address(new BoxaFeeSource(observer, owner, hooks, kinds));
+            } else {
+                // stateless and ownerless: it reads the pool manager and escrow factory from the launchpad, and the
+                // price from Ascend's own EMA, so it needs neither the observer nor the owner
+                p.source = address(
+                    new AscendV5FeeSource(IAscendV5Launchpad(ASCEND_V5_LAUNCHPAD), ASCEND_V5_BURN_SINK)
+                );
+            }
         }
         address[] memory swappers = new address[](pms.length);
         for (uint256 j; j < pms.length; ++j) {
             require(pms[j].code.length > 0, "no pool manager at the recorded address");
             swappers[j] = _swapperFor(p, pms[j]);
-            if (!_has(swappers[j])) swappers[j] = address(new V4Swapper(IV4PoolManager(pms[j]), observer));
+            if (_has(swappers[j])) continue;
+            if (i == ASCEND) {
+                AscendV5Swapper s = new AscendV5Swapper(IAscendV5Launchpad(ASCEND_V5_LAUNCHPAD));
+                require(address(s.poolManager()) == pms[j], "Ascend's launchpad uses another pool manager");
+                swappers[j] = address(s);
+            } else {
+                swappers[j] = address(new V4Swapper(IV4PoolManager(pms[j]), observer));
+            }
         }
         p.poolManagers = pms;
         p.swappers = swappers;

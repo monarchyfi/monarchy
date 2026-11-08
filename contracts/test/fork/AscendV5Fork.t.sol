@@ -188,6 +188,31 @@ contract AscendV5ForkTest is ForkBase {
         assertApproxEqRel(IERC20(WHYPE).balanceOf(locker) - got, l.totalHoldersQuote(), 1e15);
     }
 
+    /// @dev The escrow refuses to pay out with less than about 600,000 gas left (InsufficientCollectGas), and
+    /// distribute carries on without the payout. A wallet's estimate finds that cheaper path, so the keeper and the
+    /// site send Ascend distributes with at least 2,000,000 gas. Nothing is lost on the short path: the credit waits.
+    function test_distributeNeedsGasForTheEscrowPayout() public {
+        IAscendV5Escrow e = _escrow(COIN_3);
+        Lodestar l = _activate(COIN_3, address(0));
+        _trade(COIN_3, 20 ether, 5);
+        (bytes32 id,,) = source.resolve(COIN_3, WHYPE);
+        source.poke(COIN_3, id); // the launchpad pays the escrow, as distribute's first step does
+        uint256 owed = e.claimable(address(l));
+        assertGt(owed, 0);
+
+        vm.expectEmit(address(l));
+        emit ClaimFailed();
+        l.distribute{gas: 450_000}();
+        assertEq(e.claimable(address(l)), owed, "the credit waits");
+
+        uint256 routed = l.totalHoldersQuote() + l.totalTreasuryQuote() + l.buybackReserve();
+        l.distribute{gas: 2_000_000}();
+        assertEq(e.claimable(address(l)), 0);
+        assertEq(l.totalHoldersQuote() + l.totalTreasuryQuote() + l.buybackReserve() - routed, owed);
+    }
+
+    event ClaimFailed();
+
     function _buybackRuns(address coin) internal {
         Lodestar l = _activate(coin, address(v5swapper));
         _trade(coin, 20 ether, 10);

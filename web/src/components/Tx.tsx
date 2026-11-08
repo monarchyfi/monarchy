@@ -22,13 +22,17 @@ type Props = {
   /** Send 30% more gas than the estimate, like the keeper. For calls whose cost moves between the estimate and the
    * block: an Exile lock that lands in a later hour bucket than it was estimated in can run out of gas otherwise. */
   headroom?: boolean;
+  /** Never send less gas than this. For a call with an inner step that checks its own gas floor and is allowed to
+   * fail: a wallet's estimate finds the least gas at which the transaction succeeds, which is with that step
+   * skipped (an Ascend v5 escrow refuses to pay out with less than about 600,000 gas left). */
+  minGas?: bigint;
 };
 
 /** The extra gas `headroom` adds, in percent of the estimate. */
 const HEADROOM_PCT = 30n;
 
 /** Sends one transaction and shows pending / confirmed / error, with an explorer link when there is one. */
-export function TxButton({ request, children, disabledReason, onDone, className, headroom }: Props) {
+export function TxButton({ request, children, disabledReason, onDone, className, headroom, minGas }: Props) {
   const chainId = useChainId();
   const { isConnected, address } = useConnection();
   const client = usePublicClient({ chainId });
@@ -67,10 +71,11 @@ export function TxButton({ request, children, disabledReason, onDone, className,
       // inside the try: a request built from a bad input (a fraction where whole seconds go) throws here
       let req = request();
       if (!req) return;
-      if (headroom && req.gas === undefined && client && address) {
+      if ((headroom || minGas) && req.gas === undefined && client && address) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const est = await client.estimateContractGas({ ...req, account: address } as any);
-        req = { ...req, gas: (est * (100n + HEADROOM_PCT)) / 100n };
+        const gas = headroom ? (est * (100n + HEADROOM_PCT)) / 100n : est;
+        req = { ...req, gas: minGas && gas < minGas ? minGas : gas };
       }
       // Pinned to the chain the page reads from: if the wallet moved in the meantime, wagmi refuses to send
       // instead of sending the transaction somewhere else.

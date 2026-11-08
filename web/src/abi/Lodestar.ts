@@ -320,6 +320,19 @@ export const lodestarAbi = [
   },
   {
     "type": "function",
+    "name": "creatorRoleLocked",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "desk",
     "inputs": [],
     "outputs": [
