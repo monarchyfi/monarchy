@@ -3,6 +3,9 @@ pragma solidity ^0.8.24;
 
 import {BaseScript} from "./Base.s.sol";
 import {console2} from "forge-std/Script.sol";
+import {LodestarFactory} from "../src/LodestarFactory.sol";
+import {ILodestar} from "../src/interfaces/ILodestar.sol";
+import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
 
 /// @notice Monarchy on the Uniswap v4 launchpads of Elysium mainnet (Eleos, Kleos, Boxa, Ascend v5): the hook
 /// registries the adapters start with, and `deployments/launchpads/<chainId>.json`, which records one shared core
@@ -16,6 +19,7 @@ abstract contract LaunchpadsBase is BaseScript {
     /// @dev Ascend v5's launchpad (every launch pool's hook) and BurnSink, from Ascend's contract registry.
     address internal constant ASCEND_V5_LAUNCHPAD = 0xe0dEF4221b9840a610D4e7d55812a79A6431a8eC;
     address internal constant ASCEND_V5_BURN_SINK = 0x9F0b0e3B362937b07Cd1E869b50687961e0c7741;
+    address internal constant ASCEND_V5_WHYPE = 0xbA876237B0F021A6c6D852d6c26E107997cC5E81;
     uint256 internal constant ASCEND = 3;
 
     struct Pad {
@@ -23,6 +27,7 @@ abstract contract LaunchpadsBase is BaseScript {
         address factory; // its LodestarFactory
         address[] poolManagers; // the Uniswap v4 PoolManagers its hooks use
         address[] swappers; // one buyback swapper per pool manager, in the same order
+        address launcher; // Ascend v5 only: the AscendV5Launcher that launches coins straight into a router
     }
 
     struct Launchpads {
@@ -125,6 +130,7 @@ abstract contract LaunchpadsBase is BaseScript {
             d.pads[i].factory = _a(j, string.concat(p, ".factory"));
             d.pads[i].poolManagers = vm.parseJsonAddressArray(j, string.concat(p, ".poolManagers"));
             d.pads[i].swappers = vm.parseJsonAddressArray(j, string.concat(p, ".swappers"));
+            d.pads[i].launcher = _a(j, string.concat(p, ".launcher"));
         }
     }
 
@@ -137,6 +143,7 @@ abstract contract LaunchpadsBase is BaseScript {
             vm.serializeAddress(k, "source", d.pads[i].source);
             vm.serializeAddress(k, "factory", d.pads[i].factory);
             vm.serializeAddress(k, "poolManagers", d.pads[i].poolManagers);
+            if (d.pads[i].launcher != address(0)) vm.serializeAddress(k, "launcher", d.pads[i].launcher);
             string memory one = vm.serializeAddress(k, "swappers", d.pads[i].swappers);
             pads = vm.serializeString("launchpads", k, one);
         }
@@ -167,6 +174,36 @@ abstract contract LaunchpadsBase is BaseScript {
     /// dividends that Exile harvests. Ascend v5 coins pay none, so its factory never asks for the role.
     function _needsRegistrar(uint256 i) internal pure returns (bool) {
         return i != ASCEND;
+    }
+
+    /// @dev A router's settings from the environment (see ActivateLaunchpad for the variables and defaults).
+    function _params(address token, address quote, Pad memory pad, address pm)
+        internal
+        view
+        returns (LodestarFactory.DeployParams memory p)
+    {
+        string memory s = vm.envOr("SWAPPER", string(""));
+        address swapper;
+        if (keccak256(bytes(s)) == keccak256("v4")) {
+            swapper = _swapperFor(pad, pm);
+            require(swapper != address(0), "no swapper recorded for this coin's pool manager");
+        } else if (bytes(s).length != 0) {
+            swapper = vm.parseAddress(s);
+        }
+        p.token = token;
+        p.quote = quote; // native HYPE on Eleos, Kleos and Boxa; an ERC-20 on Ascend v5
+        p.cfg = ILodestar.Config({
+            burnBps: uint16(vm.envOr("BURN_BPS", uint256(2_000))),
+            holdersBps: uint16(vm.envOr("HOLDERS_BPS", uint256(5_000))),
+            treasuryBps: uint16(vm.envOr("TREASURY_BPS", uint256(3_000))),
+            swapper: swapper,
+            maxSlippageBps: uint16(vm.envOr("MAX_SLIPPAGE_BPS", uint256(1_000))),
+            tokenToHolders: vm.envOr("TOKEN_TO_HOLDERS", true)
+        });
+        p.treasuryRecipient = vm.envAddress("TREASURY");
+        p.treasuryWindow = uint32(vm.envOr("TREASURY_WINDOW", uint256(7 days)));
+        p.tiers = MonarchTiers.defaults();
+        p.creatorLockUntil = vm.envOr("LOCK_FOREVER", true) ? type(uint64).max : 0;
     }
 
     function _has(address a) internal view returns (bool) {

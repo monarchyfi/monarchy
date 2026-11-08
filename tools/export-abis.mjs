@@ -24,6 +24,9 @@ const contracts = [
   "IAscendV5:IAscendV5Launchpad",
   "IAscendV5:IAscendV5Escrow",
   "IAscendV5:IAscendV5Seat",
+  // launching a coin on Ascend v5 straight into its router
+  "AscendV5Launcher",
+  "IAscendV5:IAscendV5EscrowFactory",
 ];
 const outDir = join(root, "web/src/abi");
 mkdirSync(outDir, { recursive: true });

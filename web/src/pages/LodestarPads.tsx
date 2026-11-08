@@ -36,6 +36,7 @@ import {
 import { useTokenMeta } from "../lib/monarchy";
 import { Switch } from "./Exile";
 import { ActivationSettings, LoadingCard, Router, useActivationSettings, type RouterEnv } from "./Lodestar";
+import { AscendLaunch, CoinProfileCard, TwoWays } from "./AscendLaunch";
 
 /** IFeeSource.Handover.OneStep */
 const ONE_STEP = 1;
@@ -52,6 +53,9 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
   const [choice, setChoice] = useState<Choice>(() => (fromUrl && fromUrl in PADS ? fromUrl : "auto"));
   const list = padsOf(pads);
   const names = padNames(list);
+  const ascend = list.find(({ info }) => info.key === "ascend")?.pad;
+  const canLaunch = !!ascend && isSet(ascend.launcher);
+  const [mode, setMode] = useState<"activate" | "launch">(() => (params.get("launch") && canLaunch ? "launch" : "activate"));
   const token = isAddress(input) ? input : undefined;
   const badInput = input !== "" && !token;
   return (
@@ -66,30 +70,55 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
           creator fees the way you set it: to Exile lockers, into buyback and burn, or to a Team Treasury streamed through Sandfall. Locked
           coins keep earning the coin's own holder dividends too. Later changes wait 12 hours, in public. No fees.
         </p>
-      </header>
-      <Card title="Coin">
-        <label className="field">
-          <span className="field-label">Coin address</span>
-          <input className="input mono-input" placeholder="0x…" value={input} onChange={(e) => setInput(e.target.value.trim())} spellCheck={false} autoComplete="off" />
-        </label>
-        <p className="muted small field-help">
-          {badInput ? "That isn't a valid address yet." : `Paste a coin launched on ${names} to view or activate its Lodestar.`}
-        </p>
-        <div className="field">
-          <span className="field-label">Launchpad</span>
+        {canLaunch && (
           <Switch
-            options={[{ key: "auto", label: "Find it" }, ...list.map(({ info }) => ({ key: info.key, label: info.name }))]}
-            value={choice}
-            onChange={(k) => setChoice(k as Choice)}
+            options={[
+              { key: "activate", label: "Activate a coin" },
+              { key: "launch", label: "Launch a new coin" },
+            ]}
+            value={mode}
+            onChange={(k) => setMode(k as "activate" | "launch")}
           />
-        </div>
-        <p className="muted small field-help">
-          {choice === "auto"
-            ? "The page asks each launchpad whether it knows the coin. Pick one yourself if you'd rather."
-            : `Looking for the coin on ${PADS[choice].name} only.`}
-        </p>
-      </Card>
-      {token && <PadToken key={token} pads={pads} token={token} choice={choice} />}
+        )}
+      </header>
+      {ascend && (mode === "launch" || choice === "ascend") && <TwoWays launchable={canLaunch} />}
+      {mode === "launch" && ascend && canLaunch ? (
+        <AscendLaunch
+          pads={pads}
+          pad={ascend}
+          onLaunched={(t) => {
+            setInput(t);
+            setChoice("ascend");
+            setMode("activate");
+          }}
+        />
+      ) : (
+        <>
+          <Card title="Coin">
+            <label className="field">
+              <span className="field-label">Coin address</span>
+              <input className="input mono-input" placeholder="0x…" value={input} onChange={(e) => setInput(e.target.value.trim())} spellCheck={false} autoComplete="off" />
+            </label>
+            <p className="muted small field-help">
+              {badInput ? "That isn't a valid address yet." : `Paste a coin launched on ${names} to view or activate its Lodestar.`}
+            </p>
+            <div className="field">
+              <span className="field-label">Launchpad</span>
+              <Switch
+                options={[{ key: "auto", label: "Find it" }, ...list.map(({ info }) => ({ key: info.key, label: info.name }))]}
+                value={choice}
+                onChange={(k) => setChoice(k as Choice)}
+              />
+            </div>
+            <p className="muted small field-help">
+              {choice === "auto"
+                ? "The page asks each launchpad whether it knows the coin. Pick one yourself if you'd rather."
+                : `Looking for the coin on ${PADS[choice].name} only.`}
+            </p>
+          </Card>
+          {token && <PadToken key={token} pads={pads} token={token} choice={choice} />}
+        </>
+      )}
     </div>
   );
 }
@@ -546,6 +575,7 @@ function AscendPad({ pads, f, token }: { pads: LaunchpadsDeployment; f: Found; t
   if (router && isCreator.data)
     return (
       <>
+        {isSet(f.pad.launcher) && <CoinProfileCard launcher={f.pad.launcher!} token={token} router={router} />}
         <Router env={env} lodestar={router} />
         <AscendPoolCard pool={pool} quote={f.quote} lodestar={router} />
       </>

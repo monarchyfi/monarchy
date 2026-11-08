@@ -231,6 +231,126 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "deployLaunched",
+    "inputs": [
+      {
+        "name": "p",
+        "type": "tuple",
+        "internalType": "struct LodestarFactory.DeployParams",
+        "components": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "quote",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "cfg",
+            "type": "tuple",
+            "internalType": "struct ILodestar.Config",
+            "components": [
+              {
+                "name": "burnBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "holdersBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "treasuryBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "swapper",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "maxSlippageBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "tokenToHolders",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          },
+          {
+            "name": "treasuryRecipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "treasuryWindow",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "tiers",
+            "type": "tuple[]",
+            "internalType": "struct IExile.Tier[]",
+            "components": [
+              {
+                "name": "minDuration",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "multiplierBps",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "label",
+                "type": "bytes32",
+                "internalType": "bytes32"
+              }
+            ]
+          },
+          {
+            "name": "enrolListing",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "listingCap",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "creatorLockUntil",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "steward",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "lodestar",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "exile",
     "inputs": [],
     "outputs": [
@@ -245,6 +365,19 @@ export const lodestarFactoryAbi = [
   {
     "type": "function",
     "name": "implementation",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launcher",
     "inputs": [],
     "outputs": [
       {
@@ -477,6 +610,19 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "setLauncher",
+    "inputs": [
+      {
+        "name": "next",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setSuccessor",
     "inputs": [
       {
@@ -533,6 +679,19 @@ export const lodestarFactoryAbi = [
     "inputs": [
       {
         "name": "swapper",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LauncherSet",
+    "inputs": [
+      {
+        "name": "launcher",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -671,6 +830,11 @@ export const lodestarFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "NotLaunchedToRouter",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotPendingOwner",
     "inputs": []
   },
@@ -682,6 +846,11 @@ export const lodestarFactoryAbi = [
   {
     "type": "error",
     "name": "NotStranded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OnlyLauncher",
     "inputs": []
   },
   {

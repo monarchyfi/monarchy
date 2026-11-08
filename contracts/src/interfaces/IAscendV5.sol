@@ -20,8 +20,42 @@ interface IAscendV5Launchpad {
 }
 
 interface IAscendV5EscrowFactory {
+    /// @dev `creator` must be zero (the factory makes the pool's new escrow its creator); `fee` is the creator's
+    /// choice in pips (10_000 = 1%, up to 100_000 = 10%); `builderFee` is zero without an approved builder.
+    struct LaunchParams {
+        string name;
+        string symbol;
+        address quote;
+        uint256 devBuyQuote;
+        uint256 minDevOut;
+        bytes32 salt;
+        address creator;
+        uint24 fee;
+        uint24 builderFee;
+    }
+
+    /// @dev Who the escrow pays (`recipient`), who gets the dev buy (`dev`), any approved builder, and whether the
+    /// pool accepts Ascend's community takeovers (`cto`, fixed for good).
+    struct Route {
+        address recipient;
+        address dev;
+        address builder;
+        bool cto;
+    }
+
     function escrowOf(bytes32 poolId) external view returns (address);
     function launchpad() external view returns (address);
+    /// @notice Launches a coin: deploys it, opens its pool with the launchpad as hook and makes a new escrow the
+    /// pool's creator, paying `r.recipient`. The dev buy is a `transferFrom` of `p.devBuyQuote` from the caller,
+    /// and what it doesn't spend comes back in the same call. Trailing calldata is ignored (Ascend's disclosure).
+    function launch(LaunchParams calldata p, Route calldata r)
+        external
+        returns (address token, bytes32 poolId, address escrow);
+    /// @notice The escrow and coin `launch` would create for `payer`. The coin's address doesn't depend on `r`.
+    function predict(address payer, LaunchParams calldata p, Route calldata r)
+        external
+        view
+        returns (address escrow, address token);
 }
 
 /// @notice A pool's creator role on Ascend v5. Each arrival of fees is split by the RuleSet the pool launched with;

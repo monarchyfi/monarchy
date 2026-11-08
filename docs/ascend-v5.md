@@ -1,8 +1,8 @@
 # Monarchy on Ascend v5 (Elysium mainnet)
 
 Ascend's mainnet launchpad is a new contract generation ("v5") on Elysium mainnet (chain 99901). It differs from the
-testnet launchpad Monarchy was first built on, so it has its own adapter (`AscendV5FeeSource`) and buyback swapper
-(`AscendV5Swapper`). Addresses and rules below were read from Ascend's
+testnet launchpad Monarchy was first built on, so it has its own adapter (`AscendV5FeeSource`), buyback swapper
+(`AscendV5Swapper`) and launcher (`AscendV5Launcher`). Addresses and rules below were read from Ascend's
 [technical docs](https://ascendlaunch.xyz/technical-docs), [contract registry](https://ascendlaunch.xyz/contracts.json)
 and the chain on November 5, 2026.
 
@@ -27,7 +27,53 @@ and the chain on November 5, 2026.
 - **Coin types.** Only Vanilla coins can move to Lodestar. Holder Rewards, Buyback and Custom mix coins pay Ascend's
   own seat contract, whose split is fixed at launch.
 
-## Activating a coin
+## Two ways onto Ascend
+
+A coin gets onto Monarchy one of two ways, and the site explains both above the launch form and the activation:
+
+| | Launch through Monarchy | Launch on Ascend, then switch |
+| --- | --- | --- |
+| For | a new coin | a coin already live, or a creator who'd rather launch on Ascend's own site |
+| How | one transaction on `AscendV5Launcher` | "Pays creator" on Ascend, then three steps here |
+| Fees through the split | from the first trade | once the router accepts, 48 hours after it was proposed |
+| During the first 48 hours | n/a | what the escrow pays out goes to the creator's wallet (a tenth of the fee before graduation); held fees go to whoever is the recipient at graduation |
+| Community takeovers | off | the creator's choice on Ascend (leave it off) |
+| Coin picture and links | kept by the launcher, shown on Monarchy's site | on Ascend, published by the creator's wallet before the switch |
+
+**Why switching takes 48 hours.** The wait is in Ascend's `CreatorEscrow`, not in Monarchy: a new recipient is
+proposed on chain and can only accept once `recipientReadyAt` has passed, 48 hours later, so a coin's fees can't be
+redirected in one transaction and holders see the change coming. Ascend's contracts aren't upgradeable, so neither
+Monarchy nor Ascend can shorten it. A coin launched through Monarchy never has the gap, because the escrow's first
+recipient is the router.
+
+## Launching through Monarchy
+
+`AscendV5Launcher.launch(coin, deployParams, profile, plan)` does it in one transaction:
+
+1. It predicts the coin's address with `EscrowFactory.predict` (the launcher is the payer; the caller's salt is
+   mixed with the caller's address so nobody can copy a pending launch to take its address), the pool id from the
+   pool key, and the router address from the factory's CREATE2 rule.
+2. It launches through `EscrowFactory.launch` as a Vanilla coin with `Route(recipient = router, dev = caller,
+   builder = 0, cto = false)` and the creator's fee (1% to 10%). The first buy is pulled from the caller (or sent
+   as HYPE on a WHYPE pair and wrapped), and what it doesn't spend comes back. An optional launch statement rides
+   after the call as Ascend's `ascend.disclosure.v1` suffix, which Ascend reads from the inner call.
+3. It checks Ascend made the predicted coin and pool, then calls `LodestarFactory.deployLaunched(params, caller)`,
+   which only the launcher the factory's owner named (`setLauncher`) may call, and only while the escrow already
+   pays the predicted router. The router is deployed holding the role, with nothing to accept, and a creator lock
+   binds at once.
+
+Takeovers are off on these coins, so the router keeps the role for as long as its lock says. Ascend's site only
+lets a coin's fee wallet publish its picture and description (on mainnet every coin with art had it published by
+its escrow's recipient, and no coin whose recipient is a contract has any), and here the fee wallet is the router.
+So the launcher keeps each coin's image link, description and links (`profileOf`), the router's steward can change
+them (`setProfile`), and Monarchy's site shows them on the coin's router page. Asking Ascend to accept the
+router's steward as publisher would put the art on Ascend's page too.
+
+`contracts/script/LaunchAscend.s.sol` does the same from the command line (NAME, SYMBOL, TREASURY, QUOTE, FEE,
+DEV_BUY, IMAGE, DESCRIPTION, WEBSITE, TWITTER, TELEGRAM, PLAN, and ActivateLaunchpad's router settings); a second
+run finds the coin instead of launching another. A launch costs about 6.5M gas.
+
+## Activating a coin launched on Ascend
 
 1. The coin's recipient (the creator's wallet) calls `escrow.proposeRecipient(router)`, with the router address
    from `LodestarFactory.predict(token, quote)`. The escrow is `EscrowFactory.escrowOf(poolId)`.
@@ -44,9 +90,12 @@ A creator lock set in step 2 only binds once step 3 has happened; until then the
 
 ### Community takeovers
 
-Most v5 launches (366 of 575 as of November 5, 2026) opted in to Ascend's community takeovers. On those pools
-Ascend's `CtoRegistryV5` can replace the escrow's recipient: anyone files a request, Ascend's owner approves it, and
-after a 48 hour notice the applicant becomes the recipient. This works on a router too, creator lock or not: the lock
+Most Vanilla launches (988 of 1,059 as of November 8, 2026) opted in to Ascend's community takeovers; Holder
+Rewards, Buyback and Custom mix coins have no such setting and none of the 682 has it. The opt-in is fixed at
+launch. Ascend's docs describe takeovers as the way a coin whose held fees were forfeited can earn creator fees
+again, at most twice per pool. On chain, Ascend's `CtoRegistryV5` can replace the escrow's recipient: anyone files a
+request with a link as evidence, Ascend's owner approves it, and after a 48 hour notice the applicant becomes the
+recipient. This works on a router too, creator lock or not: the lock
 only stops the steward. Credits the router already earned stay claimable and are still routed, but held fees and
 all future fees go to the new recipient. `AscendV5FeeSource.takeoverRegistry(poolId)` returns the registry, or zero
 when the pool did not opt in, so the site can show this next to the lock.
@@ -79,14 +128,22 @@ Vanilla coins at 1%, 3% and 10% fees and both token orders:
 ELYSIUM_RPC_URL=https://rpc-live.boxa.club forge test --match-contract AscendV5ForkTest
 ```
 
+`contracts/test/fork/AscendV5LauncherFork.t.sol` launches real coins through `AscendV5Launcher` on the same fork: at
+every fee level, against WHYPE and USDC, with the first buy in WHYPE or HYPE and with a launch statement. It checks
+the escrow pays the router from the start with nothing pending and takeovers off, that fees reach lockers and the
+treasury from the first trades, that a copied launch gets another coin, that the factory takes `deployLaunched`
+only from its launcher and never for a coin whose escrow pays someone else, and the profile rules.
+`test_deployLaunched` in `NativeLodestar.t.sol` covers the factory side without a fork.
+
 ## Deploying and running it
 
 Ascend v5 is the fourth launchpad in the mainnet scripts (`LAUNCHPAD=ascend`), so it shares the multisig owner,
 Exile, Sandfall and the Lodestar implementation with Eleos, Kleos and Boxa (docs/launchpads.md):
 
-- `DeployLaunchpads` deploys `AscendV5FeeSource`, an `AscendV5Swapper` and a factory, and records them under
-  `launchpads.ascend` in `deployments/launchpads/99901.json`. The factory never needs to be an Exile registrar
-  (v5 coins pay no holder dividends), so v5 activations can start as soon as it has run.
+- `DeployLaunchpads` deploys `AscendV5FeeSource`, an `AscendV5Swapper`, a factory and an `AscendV5Launcher`, and
+  records them under `launchpads.ascend` in `deployments/launchpads/99901.json`. The factory never needs to be an
+  Exile registrar (v5 coins pay no holder dividends), so v5 activations can start as soon as it has run. Launches
+  through Monarchy start once the multisig calls `factory.setLauncher(launcher)`; the script prints the calldata.
 - `ActivateLaunchpad` with `LAUNCHPAD=ascend TOKEN=<coin>` (and `QUOTE=whype|usdc|kntq` if the script can't tell)
   proposes the router on the escrow and deploys it; run again after the 48 hours, by anyone, it accepts.
 - `tools/keeper-launchpads.sh` sends `acceptCreator()` for any router whose wait is over, then keeps it
@@ -94,7 +151,9 @@ Exile, Sandfall and the Lodestar implementation with Eleos, Kleos and Boxa (docs
   them first, and scales its minimum to the quote's decimals.
 - `ELYSIUM_RPC_URL=https://rpc-live.boxa.club tools/rehearse-ascend-v5.sh` runs all of it on an anvil fork of the
   latest block, with a live 3% Vanilla coin: deploy, activation, a keeper run during the wait that leaves the router
-  alone, and the keeper accepting and routing WHYPE to lockers, the treasury and the buyback afterwards.
+  alone, and the keeper accepting and routing WHYPE to lockers, the treasury and the buyback afterwards. Then the
+  owner names the launcher, `LaunchAscend` launches a new coin through it, and the keeper routes its fees with no
+  creator fee ever reaching a wallet.
 
 On the website's Lodestar page (Elysium mainnet), a pasted v5 coin is found against WHYPE, USDC and KNTQ. The page
 shows the pool's fee, the escrow, fees Ascend still holds and their graduation deadline, warns when the pool opted in
@@ -103,7 +162,13 @@ contract). The steps are the three above, with a countdown to the end of Ascend'
 role" button anyone can press, and a way for the creator to call the hand-off off before then. A router that is
 waiting shows "Lock starts when the router holds the role" rather than a lock that doesn't bind yet.
 
+Once the launcher is deployed, the page also has "Launch a new coin": name, ticker, pair, fee, first buy, picture
+and links, an optional launch statement and the router's settings, with the coin and router addresses shown before
+signing (the router address is worked out locally, as for activations). A coin launched this way shows its picture,
+description and links on its router page, editable by the steward.
+
 ## Not done yet
 
 - Nothing is deployed: `DeployLaunchpads` needs the multisig and a funded deployer, then the deployments file
-  committed so the site and keeper pick it up.
+  committed so the site and keeper pick it up, and the multisig's `setLauncher` call before launches through
+  Monarchy work.

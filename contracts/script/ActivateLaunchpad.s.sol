@@ -225,35 +225,6 @@ contract ActivateLaunchpad is LaunchpadsBase {
         if (IEleosHook(hook).book(token).creatorOwed > 0) IEleosHook(hook).payCreator(token);
     }
 
-    function _params(address token, address quote, Pad memory pad, address pm)
-        internal
-        view
-        returns (LodestarFactory.DeployParams memory p)
-    {
-        string memory s = vm.envOr("SWAPPER", string(""));
-        address swapper;
-        if (keccak256(bytes(s)) == keccak256("v4")) {
-            swapper = _swapperFor(pad, pm);
-            require(swapper != address(0), "no swapper recorded for this coin's pool manager");
-        } else if (bytes(s).length != 0) {
-            swapper = vm.parseAddress(s);
-        }
-        p.token = token;
-        p.quote = quote; // native HYPE on Eleos, Kleos and Boxa; an ERC-20 on Ascend v5
-        p.cfg = ILodestar.Config({
-            burnBps: uint16(vm.envOr("BURN_BPS", uint256(2_000))),
-            holdersBps: uint16(vm.envOr("HOLDERS_BPS", uint256(5_000))),
-            treasuryBps: uint16(vm.envOr("TREASURY_BPS", uint256(3_000))),
-            swapper: swapper,
-            maxSlippageBps: uint16(vm.envOr("MAX_SLIPPAGE_BPS", uint256(1_000))),
-            tokenToHolders: vm.envOr("TOKEN_TO_HOLDERS", true)
-        });
-        p.treasuryRecipient = vm.envAddress("TREASURY");
-        p.treasuryWindow = uint32(vm.envOr("TREASURY_WINDOW", uint256(7 days)));
-        p.tiers = MonarchTiers.defaults();
-        p.creatorLockUntil = vm.envOr("LOCK_FOREVER", true) ? type(uint64).max : 0;
-    }
-
     function _check(address lodestar) internal view {
         require(Lodestar(payable(lodestar)).isCreator(), "the router doesn't hold the creator role");
         console2.log("Lodestar active", lodestar);

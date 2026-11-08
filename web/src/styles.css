@@ -754,3 +754,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
 .cadence::before { content: "*"; color: var(--text); flex: none; }
 .note-box { border: 1px dashed var(--line-2); padding: 12px 14px; color: var(--muted); font-size: 13.5px; line-height: 1.55; margin: 12px 0; }
 .note-box b { color: var(--text); }
+
+/* Ascend: the two ways onto Monarchy, the launch form and a launched coin's art */
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.way h4 { margin: 0 0 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.way p { margin: 0 0 8px; }
+.why { margin-top: 10px; }
+.why summary { cursor: pointer; color: var(--text); font-size: 14px; }
+.why p { margin: 8px 0 0; }
+.textarea { resize: vertical; min-height: 64px; line-height: 1.45; }
+.profile-edit { display: flex; gap: 14px; align-items: flex-end; }
+.profile-edit .field { flex: 1; min-width: 0; }
+.coin-art { width: 72px; height: 72px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--line-2); flex: none; background: #000; }
+.coin-profile { display: flex; gap: 16px; align-items: flex-start; }
+.coin-profile p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.page-head .switch { margin-top: 16px; max-width: 420px; }

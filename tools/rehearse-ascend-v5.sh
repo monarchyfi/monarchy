@@ -13,6 +13,9 @@
 # 4. 48 hours later the keeper accepts the hand-off; what Ascend credited before stays the creator's. After more
 #    trades the keeper distributes: the escrow's WHYPE credit is split to Exile lockers, the Team Treasury stream and
 #    the buyback (bought and burned at Ascend's BurnSink, or kept in reserve while Ascend's average price lags).
+# 5. The other way onto Ascend: LaunchAscend launches a new coin through Monarchy's AscendV5Launcher (named on the
+#    factory by the owner in step 1), with its router as fee wallet from the first trade and no wait. A second run
+#    sends nothing; after trades the keeper distributes and no creator fee ever reaches a wallet.
 # The deployments file goes to deployments/launchpads/rehearsal.json (git-ignored) and the anvil log to $TMPDIR.
 # Needs forge, cast, anvil and jq. KEEP_ANVIL=1 leaves the node running at the end (for the website, with
 # VITE_LAUNCHPADS_REHEARSAL=1 and VITE_MAINNET_RPC_URL pointing at it).
@@ -75,7 +78,12 @@ SOURCE=$(jq -r .launchpads.ascend.source "$FILE")
 FACTORY=$(jq -r .launchpads.ascend.factory "$FILE")
 SWAPPER=$(jq -r '.launchpads.ascend.swappers[0]' "$FILE")
 EXILE=$(jq -r .exile "$FILE")
+LAUNCHER=$(jq -r .launchpads.ascend.launcher "$FILE")
 check "the Ascend pad is recorded" '[ "$FACTORY" != null ] && [ "$(cast code "$FACTORY" --rpc-url "$RPC")" != 0x ]'
+check "its launcher is deployed" '[ "$LAUNCHER" != null ] && [ "$(cast code "$LAUNCHER" --rpc-url "$RPC")" != 0x ]'
+# the deployer isn't the owner, so DeployLaunchpads printed this call for the multisig
+send "$FACTORY" "setLauncher(address)" "$LAUNCHER" --private-key "$OWNER_KEY"
+check "the owner named the launcher on the factory" '[ "$(call "$FACTORY" "launcher()(address)")" = "$LAUNCHER" ]'
 check "its factory is not an Exile registrar (it doesn't need to be)" \
   '[ "$(call "$EXILE" "isRegistrar(address)(bool)" "$FACTORY")" = false ]'
 
@@ -147,4 +155,39 @@ if [ "$BURNED" != 0 ]; then
 fi
 keeper >/dev/null
 echo "ok: a second keeper run right after goes through"
-echo "rehearsal passed: router $ROUTER for coin $COIN"
+
+echo "== 5. Launch a new coin through Monarchy: the router is the fee wallet from the first trade"
+IMAGE=ipfs://bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy
+launch() {
+  PRIVATE_KEY=$CREATOR_KEY NAME="Rehearsal Monarch" SYMBOL=RMON TREASURY=$TREASURY SWAPPER=v4 FEE=5 \
+    DEV_BUY=1000000000000000000 IMAGE=$IMAGE DESCRIPTION="Launched through Monarchy." WEBSITE=https://example.com \
+    PLAN="The first buy is the team's." script LaunchAscend.s.sol
+}
+launch
+N=$(call "$FACTORY" "allLodestarsLength()(uint256)" | num)
+NEW=$(call "$FACTORY" "allLodestars(uint256)(address)" $((N - 1)))
+TOKEN=$(call "$NEW" "token()(address)")
+NEWPOOL=$(call "$NEW" "poolId()(bytes32)")
+NEWESCROW=$(call "$SOURCE" "escrowOf(bytes32)(address)" "$NEWPOOL")
+check "the new coin's escrow pays its router" '[ "$(call "$NEWESCROW" "recipient()(address)")" = "$NEW" ]'
+check "with nothing pending" '[ "$(call "$NEWESCROW" "pendingRecipient()(address)")" = 0x0000000000000000000000000000000000000000 ]'
+check "and no community takeovers" '[ "$(call "$NEWESCROW" "ctoRegistry()(address)")" = 0x0000000000000000000000000000000000000000 ]'
+check "the router holds the creator role at once" '[ "$(call "$NEW" "isCreator()(bool)")" = true ]'
+check "its lock binds at once" '[ "$(call "$NEW" "creatorRoleLocked()(bool)")" = true ]'
+check "the creator is its steward" '[ "$(call "$NEW" "steward()(address)")" = "$CREATOR" ]'
+check "the creator got the first buy" '[ "$(call "$TOKEN" "balanceOf(address)(uint256)" "$CREATOR" | num)" != 0 ]'
+check "the pool fee is the 5% asked for" '[ "$(call "$(call "$SOURCE" "launchpad()(address)")" "currentFee(bytes32)(uint24)" "$NEWPOOL" | num)" = 50000 ]'
+check "the launcher keeps the coin's art" 'call "$LAUNCHER" "profileOf(address)((string,string,string,string,string))" "$TOKEN" | grep -q "$IMAGE"'
+NONCE=$(cast nonce "$CREATOR" --rpc-url "$RPC")
+launch
+check "a second run sends nothing" '[ "$(cast nonce "$CREATOR" --rpc-url "$RPC")" = "$NONCE" ]'
+for _ in $(seq 1 10); do
+  send "$SWAPPER" "buyExactIn(bytes32,uint256,uint256,address)" "$NEWPOOL" 5ether 0 "$TRADER" --private-key "$TRADER_KEY"
+  warp 360
+done
+H0=$(call "$NEW" "totalHoldersQuote()(uint256)" | num)
+keeper >/dev/null
+check "the keeper routed the new coin's fees to lockers" '[ "$(call "$NEW" "totalHoldersQuote()(uint256)" | num)" != "$H0" ]'
+check "and to the Team Treasury stream" '[ "$(call "$NEW" "totalTreasuryQuote()(uint256)" | num)" != 0 ]'
+check "no creator fee ever reached a wallet" '[ "$(call "$NEWESCROW" "claimable(address)(uint256)" "$CREATOR" | num)" = 0 ]'
+echo "rehearsal passed: router $ROUTER for coin $COIN, and router $NEW for the coin $TOKEN launched through Monarchy"

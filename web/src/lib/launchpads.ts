@@ -59,7 +59,25 @@ export type PadDeployment = {
   factory: Address; // its LodestarFactory
   poolManagers: Address[]; // the Uniswap v4 pool managers its hooks use
   swappers: Address[]; // one buyback swapper per pool manager, in the same order (an AscendV5Swapper on Ascend)
+  /** Ascend v5 only: the AscendV5Launcher, which launches a new coin with its router as fee owner from the first trade */
+  launcher?: Address;
 };
+
+/** Ascend's coin page. */
+export const ascendCoinUrl = (token: string) => `https://app.ascendlaunch.xyz/tokens/${token}`;
+
+/** A link a creator typed, if it is safe to show: https only, or ipfs:// (shown through a public gateway). */
+export function safeLink(raw: string | undefined, allowIpfs = false): string | undefined {
+  const v = raw?.trim();
+  if (!v) return undefined;
+  if (allowIpfs && /^ipfs:\/\/[A-Za-z0-9./_-]+$/.test(v)) return `https://ipfs.io/ipfs/${v.slice(7)}`;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** deployments/launchpads/<chainId>.json: one shared core and a factory per launchpad. The routers aren't listed;
  * each factory's allLodestars is the list. */

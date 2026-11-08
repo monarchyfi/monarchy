@@ -135,11 +135,13 @@ Every send is dry-run first, refused above `MAX_GAS` (default 4,000,000), sent w
 - add hook generations to an adapter (`addHook`; add-only),
 - name a successor factory for upgrades and the default swapper for new activations (each behind its own delay),
 - deploy a stranded one-step router for its creator (`rescueDeploy`),
+- name the launcher that launches new Ascend v5 coins straight into a router (`setLauncher`, Ascend's factory only),
 - propose and remove Exile registrars (adding one waits 12 hours).
 
-It can't touch routed fees, locks or streams. Two of those powers need a check by the signers each time, because nothing on chain does it for them:
+It can't touch routed fees, locks or streams. Three of those powers need a check by the signers each time, because nothing on chain does it for them:
 
 - **A new registrar.** A registrar can point any coin's harvest at a pool of its own and collect that coin's dividends there, so the only registrars should be the three factories. Watch Exile for `RegistrarProposed`: a proposal nobody planned has 12 hours before it can be added, and `removeRegistrar` drops it at once. A check in `setHarvest` on who created the pool wouldn't help, since a hostile registrar could create its own pool.
+- **A new launcher.** `deployLaunched` deploys a router for whatever steward and settings the named launcher passes, but only for a coin whose escrow already pays that router's address, which only happens to coins launched with it as recipient. Name only the `AscendV5Launcher` from the deployments file, whose code passes the caller as steward.
 - **A rescue deploy.** The settings in `rescueDeploy` calldata (split, swapper, treasury recipient, treasury window, steward) are whatever its author wrote, and nothing the creator signed binds them. Compare them with what the creator asked for, in writing and from the creator's address, before signing.
 
 The plan is a Safe 2-of-2 with one key held by the Ascend launchpad team. **Recommendation: make it 2-of-3 with a cold backup key.** With 2-of-2, losing either key freezes upgrades, new hook generations and rescue deploys for good. Safe 1.3.0 is deployed on Elysium mainnet at its canonical addresses (proxy factory `0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2`).

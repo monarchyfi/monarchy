@@ -34,7 +34,7 @@ On Ascend the creator role collects a share of every swap fee: half of a 1% fee 
 
 ### On Ascend's mainnet launchpad (v5)
 
-Ascend v5 gives each coin a creator escrow. A Vanilla coin's creator proposes its Lodestar as the escrow's recipient, and 48 hours later anyone completes the hand-off; from then on every fee the escrow releases is routed. Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
+Ascend v5 gives each coin a creator escrow. There are two ways onto Monarchy: launch a new coin through Monarchy's `AscendV5Launcher`, which makes its router the escrow's recipient from the first trade in the same transaction, or launch on Ascend as a Vanilla coin and switch, where the creator proposes its Lodestar as the escrow's recipient and 48 hours later anyone completes the hand-off (Ascend's wait, which nobody can shorten). Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
 
 ### On Eleos, Kleos and Boxa
 
@@ -133,7 +133,7 @@ contracts/src        Lodestar, LodestarFactory, AscendSwapper, Exile, Sandfall, 
 contracts/test       Foundry tests, including a full mock-Ascend integration test and fork/ (the real
                      Eleos, Kleos and Boxa hooks on an Elysium mainnet fork)
 contracts/script     DeployMocks, DeployCore, LaunchOnAscend, ActivateLodestar, DemoFlow; for Eleos, Kleos,
-                     Boxa and Ascend v5: DeployLaunchpads, FinishLaunchpads, ActivateLaunchpad
+                     Boxa and Ascend v5: DeployLaunchpads, FinishLaunchpads, ActivateLaunchpad, LaunchAscend
 deployments/         <chainId>.json written by the scripts and read by the website; launchpads/<chainId>.json
                      for Eleos, Kleos, Boxa and Ascend v5
 web/                 Vite + React + wagmi site (landing page, Kingdom overview, Lodestar, Exile, Sandfall)
@@ -221,7 +221,7 @@ The keeper (`.github/workflows/distribute.yml`) calls `distribute()` every 3 hou
 | | |
 |---|---|
 | **Working** | Lodestar, Exile and Sandfall live on Elysium testnet with two demo tokens (USDC and stock quotes); burns, buybacks and token rewards to lockers proven on Ascend's pools; web app for all three at monarchy.fi, with the Garden, an analytics page listing every lock, stream and router; docs at docs.monarchy.fi; CI on every change |
-| **Built, not deployed** | Eleos, Kleos, Boxa and Ascend v5 support: native HYPE and WHYPE/USDC/KNTQ routing, a dividend harvest in Exile, Uniswap v4 buybacks, Ascend's 48 hour hand-off with an accept step on the site and in the keeper, and mainnet deploy, activation and keeper scripts, tested against the real launchpads on a mainnet fork and rehearsed end to end on a local one |
+| **Built, not deployed** | Eleos, Kleos, Boxa and Ascend v5 support: native HYPE and WHYPE/USDC/KNTQ routing, a dividend harvest in Exile, Uniswap v4 buybacks, Ascend's 48 hour hand-off with an accept step on the site and in the keeper, launching new Ascend coins straight into a router, and mainnet deploy, activation and keeper scripts, tested against the real launchpads on a mainnet fork and rehearsed end to end on a local one |
 | **In progress** | A testnet redeploy with the latest security review fixes |
 | **Before launch** | Third-party security audit, the upgrade multisig shared with the Ascend team, mainnet deploy (Eleos, Kleos and Boxa after Elysium's public launch on November 9), Monarchy token launch on Ascend |
 | **Next** | Website support for Eleos, Kleos and Boxa coins, kHYPE treasury option, TWAP buybacks, Ascend NFT holder bonus in Exile, an indexer for history and APR charts |

@@ -156,6 +156,52 @@ contract NativeLodestarTest is Test {
         l.transferCreatorOut(makeAddr("next"));
     }
 
+    /// @dev A coin launched with its predicted router already as creator: only the named launcher deploys it, at
+    /// once and holding the role, and never for a coin whose creator is anyone else.
+    function test_deployLaunched() public {
+        MockDividendToken fresh = new MockDividendToken();
+        LodestarFactory.DeployParams memory p = _params(address(0));
+        p.token = address(fresh);
+        p.creatorLockUntil = type(uint64).max;
+        address launcher = makeAddr("launcher");
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.OnlyOwner.selector);
+        factory3.setLauncher(launcher);
+        vm.expectEmit(address(factory3));
+        emit LodestarFactory.LauncherSet(launcher);
+        factory3.setLauncher(launcher);
+
+        (address predicted,) = factory3.predict(address(fresh), address(0));
+        hook.launch(address(fresh), predicted);
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.OnlyLauncher.selector);
+        factory3.deployLaunched(p, dev);
+        vm.prank(launcher);
+        vm.expectRevert(LodestarFactory.ZeroAddress.selector);
+        factory3.deployLaunched(p, address(0));
+        // the dev's own coin pays the dev, not a router
+        LodestarFactory.DeployParams memory other = _params(address(0));
+        vm.prank(launcher);
+        vm.expectRevert(LodestarFactory.NotLaunchedToRouter.selector);
+        factory3.deployLaunched(other, dev);
+
+        vm.prank(launcher);
+        Lodestar l = Lodestar(payable(factory3.deployLaunched(p, dev)));
+        assertEq(address(l), predicted);
+        assertTrue(l.isCreator(), "holds the role with no hand-off");
+        assertTrue(l.creatorRoleLocked(), "and the lock binds at once");
+        assertEq(l.steward(), dev);
+        assertEq(factory3.lodestarOf(address(fresh)), predicted);
+        vm.prank(launcher);
+        vm.expectRevert(LodestarFactory.AlreadyDeployed.selector);
+        factory3.deployLaunched(p, dev);
+
+        factory3.setLauncher(address(0));
+        vm.prank(address(0));
+        vm.expectRevert(LodestarFactory.OnlyLauncher.selector);
+        factory3.deployLaunched(p, dev);
+    }
+
     function test_delayedLockRefusedWhileHandingOut() public {
         (address predicted,) = factory3.predict(address(token), address(0));
         vm.prank(dev);

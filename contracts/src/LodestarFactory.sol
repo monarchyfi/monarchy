@@ -58,6 +58,9 @@ contract LodestarFactory {
     /// with 7 days' notice. The owner names it, and each router's steward still has to propose the move.
     /// 0 = none.
     address public successor;
+    /// @notice The launcher contract that may deploy routers for coins it just launched with the router already as
+    /// fee owner (`deployLaunched`), so the launchpad's hand-off wait never applies. Named by the owner; 0 = none.
+    address public launcher;
     mapping(address token => address) public lodestarOf;
     address[] public allLodestars;
 
@@ -71,6 +74,7 @@ contract LodestarFactory {
     );
     event DefaultSwapperSet(address swapper);
     event SuccessorSet(address successor);
+    event LauncherSet(address launcher);
     event OwnerTransferStarted(address indexed next);
     event OwnerTransferred(address indexed previous, address indexed next);
 
@@ -86,6 +90,8 @@ contract LodestarFactory {
     error HoldersSplitActive();
     error NoListingDesk();
     error NotStranded();
+    error OnlyLauncher();
+    error NotLaunchedToRouter();
 
     /// @dev Where a deploy lands, resolved before `_deploy`.
     struct Target {
@@ -163,6 +169,20 @@ contract LodestarFactory {
         _deploy(p, t);
         ILodestar(holder).releaseForeignRole(p.token, lodestar);
         if (source.creator(p.token, t.poolId) != lodestar) revert NotStranded();
+    }
+
+    /// @notice For a coin launched with its predicted router already as the pool's creator (Ascend v5 through
+    /// `AscendV5Launcher`): deploys that router for `steward` with no hand-off and no wait. Only the launcher named by
+    /// the owner may call it, in the same transaction as the launch, and only while the launchpad already shows the
+    /// router as creator, so it can't touch a coin whose creator is anyone else.
+    function deployLaunched(DeployParams calldata p, address steward) external returns (address lodestar) {
+        if (msg.sender != launcher || msg.sender == address(0)) revert OnlyLauncher();
+        if (steward == address(0)) revert ZeroAddress();
+        Target memory t = _target(p, steward);
+        lodestar = t.lodestar;
+        if (source.creator(p.token, t.poolId) != lodestar) revert NotLaunchedToRouter();
+        t.acceptNow = false;
+        _deploy(p, t);
     }
 
     /// @dev True when `holder` is a router this factory made for a different coin.
@@ -284,6 +304,13 @@ contract LodestarFactory {
         if (next == address(this)) revert ZeroAddress();
         successor = next;
         emit SuccessorSet(next);
+    }
+
+    /// @notice Name the launcher that may call `deployLaunched` (0 turns it off). Existing routers are unaffected.
+    function setLauncher(address next) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        launcher = next;
+        emit LauncherSet(next);
     }
 
     /// @notice Start handing the owner role to `next`, which takes it with `acceptOwner`, so a mistyped address

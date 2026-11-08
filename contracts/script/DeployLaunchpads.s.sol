@@ -10,6 +10,7 @@ import {LodestarFactory} from "../src/LodestarFactory.sol";
 import {V4PriceObserver} from "../src/V4PriceObserver.sol";
 import {V4Swapper} from "../src/V4Swapper.sol";
 import {AscendV5Swapper} from "../src/AscendV5Swapper.sol";
+import {AscendV5Launcher} from "../src/AscendV5Launcher.sol";
 import {IV4PoolManager} from "../src/interfaces/IUniswapV4.sol";
 import {IExile} from "../src/interfaces/IExile.sol";
 import {ISandfall} from "../src/interfaces/ISandfall.sol";
@@ -26,7 +27,9 @@ import {IAscendV5Launchpad} from "../src/interfaces/IAscendV5.sol";
 ///   Ascend core is already on this chain, so every Monarchy router shares one Exile) and the V4PriceObserver;
 /// - per launchpad: its adapter with the known hooks, a buyback swapper per pool manager (a V4Swapper; on Ascend v5 an
 ///   AscendV5Swapper), and a LodestarFactory with no default swapper (phase 1: the buyback share waits in each
-///   router's reserve until a swapper is set, unless the creator picks Monarchy's swapper at activation).
+///   router's reserve until a swapper is set, unless the creator picks Monarchy's swapper at activation); on Ascend v5
+///   also an AscendV5Launcher, which launches new coins with their router as fee owner from the first trade. The
+///   factory only takes its launches once the owner calls `setLauncher` (printed when the deployer isn't the owner).
 /// FACTORY_OWNER (required) owns every factory and adapter and is handed Exile; on mainnet it must be a multisig.
 /// Each factory names its routers' harvests in Exile, so it has to become an Exile registrar, which takes 12 hours:
 /// this script proposes the Eleos, Kleos and Boxa factories, and FinishLaunchpads adds them once the timelock has
@@ -72,6 +75,7 @@ contract DeployLaunchpads is LaunchpadsBase {
         for (uint256 i; i < PADS; ++i) {
             d.pads[i] = _deployPad(d, i, owner);
         }
+        if (_has(d.pads[ASCEND].factory)) _nameLauncher(d.pads[ASCEND], me);
 
         Exile exile = Exile(payable(d.exile));
         bool exileMine = exile.owner() == me;
@@ -103,6 +107,7 @@ contract DeployLaunchpads is LaunchpadsBase {
             }
             console2.log(_padName(i), "factory", d.pads[i].factory);
             console2.log(_padName(i), "adapter", d.pads[i].source);
+            if (_has(d.pads[i].launcher)) console2.log(_padName(i), "launcher", d.pads[i].launcher);
         }
         console2.log("owner", owner);
         if (exile.pendingOwner() == owner) console2.log("next: the owner calls Exile.acceptOwner()");
@@ -158,5 +163,20 @@ contract DeployLaunchpads is LaunchpadsBase {
             );
         }
         require(address(LodestarFactory(p.factory).source()) == p.source, "factory and adapter don't match");
+        if (i == ASCEND && !_has(p.launcher)) {
+            p.launcher = address(new AscendV5Launcher(LodestarFactory(p.factory), ASCEND_V5_WHYPE));
+        }
+    }
+
+    /// @dev The Ascend factory only takes launches from the launcher its owner names: done here when the deployer owns
+    /// it (a rehearsal), otherwise printed for the multisig.
+    function _nameLauncher(Pad memory p, address me) internal {
+        if (!_has(p.launcher) || LodestarFactory(p.factory).launcher() == p.launcher) return;
+        if (LodestarFactory(p.factory).owner() == me) {
+            LodestarFactory(p.factory).setLauncher(p.launcher);
+        } else {
+            console2.log("the owner must name the Ascend launcher on factory", p.factory);
+            console2.logBytes(abi.encodeCall(LodestarFactory.setLauncher, (p.launcher)));
+        }
     }
 }

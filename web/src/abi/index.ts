@@ -14,3 +14,5 @@ export { ascendV5FeeSourceAbi } from "./AscendV5FeeSource";
 export { iAscendV5LaunchpadAbi } from "./IAscendV5Launchpad";
 export { iAscendV5EscrowAbi } from "./IAscendV5Escrow";
 export { iAscendV5SeatAbi } from "./IAscendV5Seat";
+export { ascendV5LauncherAbi } from "./AscendV5Launcher";
+export { iAscendV5EscrowFactoryAbi } from "./IAscendV5EscrowFactory";
