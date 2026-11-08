@@ -66,11 +66,10 @@ export type PadDeployment = {
 /** Ascend's coin page. */
 export const ascendCoinUrl = (token: string) => `https://app.ascendlaunch.xyz/tokens/${token}`;
 
-/** A link a creator typed, if it is safe to show: https only, or ipfs:// (shown through a public gateway). */
-export function safeLink(raw: string | undefined, allowIpfs = false): string | undefined {
+/** A link a creator typed, if it is safe to show: https only. */
+export function safeLink(raw: string | undefined): string | undefined {
   const v = raw?.trim();
   if (!v) return undefined;
-  if (allowIpfs && /^ipfs:\/\/[A-Za-z0-9./_-]+$/.test(v)) return `https://ipfs.io/ipfs/${v.slice(7)}`;
   try {
     const u = new URL(v);
     return u.protocol === "https:" ? u.href : undefined;

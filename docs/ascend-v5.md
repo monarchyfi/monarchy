@@ -38,7 +38,7 @@ A coin gets onto Monarchy one of two ways, and the site explains both above the 
 | Fees through the split | from the first trade | once the router accepts, 48 hours after it was proposed |
 | During the first 48 hours | n/a | what the escrow pays out goes to the creator's wallet (a tenth of the fee before graduation); held fees go to whoever is the recipient at graduation |
 | Community takeovers | off | the creator's choice on Ascend (leave it off) |
-| Coin picture and links | kept by the launcher, shown on Monarchy's site | on Ascend, published by the creator's wallet before the switch |
+| Coin picture and links | the picture file stored on chain by the launcher, shown on Monarchy's site | on Ascend, published by the creator's wallet before the switch |
 
 **Why switching takes 48 hours.** The wait is in Ascend's `CreatorEscrow`, not in Monarchy: a new recipient is
 proposed on chain and can only accept once `recipientReadyAt` has passed, 48 hours later, so a coin's fees can't be
@@ -65,13 +65,27 @@ recipient is the router.
 Takeovers are off on these coins, so the router keeps the role for as long as its lock says. Ascend's site only
 lets a coin's fee wallet publish its picture and description (on mainnet every coin with art had it published by
 its escrow's recipient, and no coin whose recipient is a contract has any), and here the fee wallet is the router.
-So the launcher keeps each coin's image link, description and links (`profileOf`), the router's steward can change
-them (`setProfile`), and Monarchy's site shows them on the coin's router page. Asking Ascend to accept the
-router's steward as publisher would put the art on Ascend's page too.
+So the launcher keeps each coin's picture, description and links (`profileOf`), the router's steward can change
+them (`setProfile`; an empty picture keeps the current one unless `removeImage` is set), and Monarchy's site shows
+them on the coin's router page. Asking Ascend to accept the router's steward as publisher would put the art on
+Ascend's page too.
+
+The picture is the file itself, not a link, so it needs no server or IPFS pin and can't go missing. The launcher
+deploys its bytes as the code of a small data contract that starts with STOP, so it can't be called (the SSTORE2
+pattern: 200 gas a byte against 20,000 a word in storage), and reads it back with `extcodecopy`. A contract's code
+holds at most 24,576 bytes, so a picture is at most 24,000 (`MAX_IMAGE`). The site takes any PNG, JPEG, WebP or GIF:
+a file already under the limit goes as it is (an animated GIF stays animated), and a bigger one is cropped to a
+centred square and redrawn in the browser at 256 pixels as WebP (JPEG where the browser can't write WebP), lowering
+the quality and then the size until it fits. The bytes on chain are whatever the steward sent, so the site only
+shows them when their first bytes say PNG, JPEG, WebP or GIF, as a `data:` URL in an `<img>`; SVG and anything
+else is never shown.
 
 `contracts/script/LaunchAscend.s.sol` does the same from the command line (NAME, SYMBOL, TREASURY, QUOTE, FEE,
-DEV_BUY, IMAGE, DESCRIPTION, WEBSITE, TWITTER, TELEGRAM, PLAN, and ActivateLaunchpad's router settings); a second
-run finds the coin instead of launching another. A launch costs about 6.5M gas.
+DEV_BUY, IMAGE_HEX, DESCRIPTION, WEBSITE, TWITTER, TELEGRAM, PLAN, and ActivateLaunchpad's router settings); a
+second run finds the coin instead of launching another. IMAGE_HEX is the picture file as hex, for example
+`IMAGE_HEX=0x$(od -An -v -tx1 coin.webp | tr -d ' \n')`, already at most 24,000 bytes (the script doesn't shrink
+it). A launch costs about 6.5M gas, plus about 5M for a full-size picture; at Elysium's usual 0.2 gwei that is well
+under a dollar.
 
 ## Activating a coin launched on Ascend
 
@@ -132,7 +146,10 @@ ELYSIUM_RPC_URL=https://rpc-live.boxa.club forge test --match-contract AscendV5F
 every fee level, against WHYPE and USDC, with the first buy in WHYPE or HYPE and with a launch statement. It checks
 the escrow pays the router from the start with nothing pending and takeovers off, that fees reach lockers and the
 treasury from the first trades, that a copied launch gets another coin, that the factory takes `deployLaunched`
-only from its launcher and never for a coin whose escrow pays someone else, and the profile rules.
+only from its launcher and never for a coin whose escrow pays someone else, and the profile rules: the picture reads
+back byte for byte, a text-only change keeps it, a 24,000 byte picture fits and one byte more doesn't, it can be
+removed, only the steward can change it, and its data contract is inert (it starts with STOP and a call returns
+nothing).
 `test_deployLaunched` in `NativeLodestar.t.sol` covers the factory side without a fork.
 
 ## Deploying and running it
@@ -152,8 +169,8 @@ Exile, Sandfall and the Lodestar implementation with Eleos, Kleos and Boxa (docs
 - `ELYSIUM_RPC_URL=https://rpc-live.boxa.club tools/rehearse-ascend-v5.sh` runs all of it on an anvil fork of the
   latest block, with a live 3% Vanilla coin: deploy, activation, a keeper run during the wait that leaves the router
   alone, and the keeper accepting and routing WHYPE to lockers, the treasury and the buyback afterwards. Then the
-  owner names the launcher, `LaunchAscend` launches a new coin through it, and the keeper routes its fees with no
-  creator fee ever reaching a wallet.
+  owner names the launcher, `LaunchAscend` launches a new coin through it with a real picture file (checked byte
+  for byte on chain), and the keeper routes its fees with no creator fee ever reaching a wallet.
 
 On the website's Lodestar page (Elysium mainnet), a pasted v5 coin is found against WHYPE, USDC and KNTQ. The page
 shows the pool's fee, the escrow, fees Ascend still holds and their graduation deadline, warns when the pool opted in
@@ -162,10 +179,22 @@ contract). The steps are the three above, with a countdown to the end of Ascend'
 role" button anyone can press, and a way for the creator to call the hand-off off before then. A router that is
 waiting shows "Lock starts when the router holds the role" rather than a lock that doesn't bind yet.
 
-Once the launcher is deployed, the page also has "Launch a new coin": name, ticker, pair, fee, first buy, picture
-and links, an optional launch statement and the router's settings, with the coin and router addresses shown before
-signing (the router address is worked out locally, as for activations). A coin launched this way shows its picture,
-description and links on its router page, editable by the steward.
+Once the launcher is deployed, the page also has "Launch on Ascend": name, ticker, pair, fee, first buy, a
+picture file (shrunk in the browser, as above), description and links, an optional launch statement and the
+router's settings, with the coin and router addresses shown before signing (the router address is worked out
+locally, as for activations). A coin launched this way shows its picture, description and links on its router page,
+and the steward can change them, pick a new picture or remove it.
+
+Before a coin is pasted, the page shows how each launchpad hands a coin's creator fees to its router, since only
+Ascend waits:
+
+| Launchpad | How the router takes over | Wait |
+| --- | --- | --- |
+| Eleos, Kleos | activate (the router is created), then the creator sends it the role | none |
+| Boxa | the creator proposes the router, then activating creates it and accepts in the same transaction | none |
+| Ascend, launched through Monarchy | the router is the fee wallet from the first trade | none |
+| Ascend, launched on Ascend | propose on the escrow, activate, accept | 48 hours, in Ascend's escrow |
+| ElysPump | not supported yet; its own fee wallet change (`setFeeReceiver`) is instant | n/a |
 
 ## Not done yet
 

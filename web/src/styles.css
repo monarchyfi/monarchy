@@ -763,8 +763,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
 .why summary { cursor: pointer; color: var(--text); font-size: 14px; }
 .why p { margin: 8px 0 0; }
 .textarea { resize: vertical; min-height: 64px; line-height: 1.45; }
-.profile-edit { display: flex; gap: 14px; align-items: flex-end; }
-.profile-edit .field { flex: 1; min-width: 0; }
+.picture-pick { display: flex; gap: 14px; align-items: center; margin: 12px 0; }
+.picture-pick > div { min-width: 0; }
+.picture-pick .field-help { margin: 6px 0 0; }
+.picture-pick label.btn { cursor: pointer; }
+.picture-pick label.btn.disabled { color: var(--faint); border-style: dashed; cursor: progress; }
+.coin-art-empty { border-style: dashed; }
+.handover td { white-space: normal; vertical-align: top; }
+.handover td:first-child, .handover td:last-child { white-space: nowrap; }
 .coin-art { width: 72px; height: 72px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--line-2); flex: none; background: #000; }
 .coin-profile { display: flex; gap: 16px; align-items: flex-start; }
 .coin-profile p { margin: 0 0 8px; overflow-wrap: anywhere; }

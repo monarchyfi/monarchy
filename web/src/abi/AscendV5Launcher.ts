@@ -44,6 +44,19 @@ export const ascendV5LauncherAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_IMAGE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_LINK",
     "inputs": [],
     "outputs": [
@@ -248,8 +261,8 @@ export const ascendV5LauncherAbi = [
         "components": [
           {
             "name": "image",
-            "type": "string",
-            "internalType": "string"
+            "type": "bytes",
+            "internalType": "bytes"
           },
           {
             "name": "description",
@@ -400,14 +413,14 @@ export const ascendV5LauncherAbi = [
     ],
     "outputs": [
       {
-        "name": "",
+        "name": "p",
         "type": "tuple",
         "internalType": "struct AscendV5Launcher.Profile",
         "components": [
           {
             "name": "image",
-            "type": "string",
-            "internalType": "string"
+            "type": "bytes",
+            "internalType": "bytes"
           },
           {
             "name": "description",
@@ -450,8 +463,8 @@ export const ascendV5LauncherAbi = [
         "components": [
           {
             "name": "image",
-            "type": "string",
-            "internalType": "string"
+            "type": "bytes",
+            "internalType": "bytes"
           },
           {
             "name": "description",
@@ -474,6 +487,11 @@ export const ascendV5LauncherAbi = [
             "internalType": "string"
           }
         ]
+      },
+      {
+        "name": "removeImage",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [],
@@ -564,6 +582,11 @@ export const ascendV5LauncherAbi = [
   {
     "type": "error",
     "name": "BadValue",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ImageNotStored",
     "inputs": []
   },
   {

@@ -67,8 +67,17 @@ contract AscendV5LauncherForkTest is ForkBase {
         });
     }
 
+    /// @dev A tiny but real WebP header followed by filler, like the site's shrunk pictures.
+    function _image(uint256 size) internal pure returns (bytes memory b) {
+        b = new bytes(size);
+        bytes memory head = hex"524946460000000057454250";
+        for (uint256 i; i < size; ++i) {
+            b[i] = i < head.length ? head[i] : bytes1(uint8(i * 7));
+        }
+    }
+
     function _profile() internal pure returns (AscendV5Launcher.Profile memory p) {
-        p.image = "ipfs://bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
+        p.image = _image(18_000);
         p.description = "A coin whose fees run through Monarchy from the first trade.";
         p.website = "https://example.com";
     }
@@ -248,22 +257,59 @@ contract AscendV5LauncherForkTest is ForkBase {
     function test_profile() public {
         (address token,, Lodestar l) = _launch(_coin(30_000, 0), 0, "");
         AscendV5Launcher.Profile memory p = launcher.profileOf(token);
-        assertEq(p.image, _profile().image);
+        assertEq(p.image, _image(18_000), "the picture reads back byte for byte");
         assertEq(p.website, "https://example.com");
 
-        p.twitter = "https://x.com/example";
+        // text changes keep the picture
+        AscendV5Launcher.Profile memory q;
+        q.description = p.description;
+        q.twitter = "https://x.com/example";
         vm.prank(trader);
         vm.expectRevert(AscendV5Launcher.NotSteward.selector);
-        launcher.setProfile(token, p);
+        launcher.setProfile(token, q, false);
         vm.prank(l.steward());
-        launcher.setProfile(token, p);
-        assertEq(launcher.profileOf(token).twitter, "https://x.com/example");
+        launcher.setProfile(token, q, false);
+        p = launcher.profileOf(token);
+        assertEq(p.twitter, "https://x.com/example");
+        assertEq(p.website, "", "links are replaced as a set");
+        assertEq(p.image, _image(18_000), "an empty image keeps the picture");
 
-        p.description = string(new bytes(1001));
+        // a new picture replaces it, and removeImage clears it
+        q.image = _image(24_000);
+        vm.prank(l.steward());
+        launcher.setProfile(token, q, false);
+        assertEq(launcher.profileOf(token).image, _image(24_000), "the largest picture fits");
+        q.image = "";
+        vm.prank(l.steward());
+        launcher.setProfile(token, q, true);
+        assertEq(launcher.profileOf(token).image.length, 0);
+
+        q.image = _image(24_001);
         vm.prank(l.steward());
         vm.expectRevert(AscendV5Launcher.TooLong.selector);
-        launcher.setProfile(token, p);
+        launcher.setProfile(token, q, false);
+        q.image = "";
+        q.description = string(new bytes(1001));
+        vm.prank(l.steward());
+        vm.expectRevert(AscendV5Launcher.TooLong.selector);
+        launcher.setProfile(token, q, false);
         vm.expectRevert(AscendV5Launcher.NotLaunchedHere.selector);
-        launcher.setProfile(COIN_3, p);
+        launcher.setProfile(COIN_3, q, false);
+    }
+
+    /// @dev The picture's data contract can't be called into doing anything: its code starts with STOP.
+    function test_imageContractIsInert() public {
+        AscendV5Launcher.Coin memory c = _coin(30_000, 0);
+        (address predicted,,) = launcher.predict(creator, c);
+        LodestarFactory.DeployParams memory d = _deployParams(predicted, WHYPE);
+        uint256 nonce = vm.getNonce(address(launcher));
+        vm.prank(creator);
+        launcher.launch(c, d, _profile(), "");
+        address pointer = vm.computeCreateAddress(address(launcher), nonce);
+        assertEq(pointer.code.length, 18_001);
+        assertEq(uint8(pointer.code[0]), 0, "STOP first");
+        (bool ok, bytes memory ret) = pointer.call(abi.encodeWithSignature("anything()"));
+        assertTrue(ok);
+        assertEq(ret.length, 0);
     }
 }

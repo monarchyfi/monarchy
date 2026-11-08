@@ -74,7 +74,7 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
           <Switch
             options={[
               { key: "activate", label: "Activate a coin" },
-              { key: "launch", label: "Launch a new coin" },
+              { key: "launch", label: "Launch on Ascend" },
             ]}
             value={mode}
             onChange={(k) => setMode(k as "activate" | "launch")}
@@ -116,10 +116,64 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
                 : `Looking for the coin on ${PADS[choice].name} only.`}
             </p>
           </Card>
-          {token && <PadToken key={token} pads={pads} token={token} choice={choice} />}
+          {token ? <PadToken key={token} pads={pads} token={token} choice={choice} /> : <HandoverTable list={list} canLaunch={canLaunch} />}
         </>
       )}
     </div>
+  );
+}
+
+type Handover = { pad: string; how: string; wait: "instant" | "none" | "48 hours" | "not supported" };
+
+/** How the router takes over a coin's creator fees on each launchpad, and how long that takes. */
+const HANDOVERS: Record<PadKey, Handover[]> = {
+  eleos: [{ pad: "Eleos", how: "Activate, which creates the router, then send it the coin's creator role from your wallet.", wait: "instant" }],
+  kleos: [{ pad: "Kleos", how: "Activate, which creates the router, then send it the coin's creator role from your wallet.", wait: "instant" }],
+  boxa: [{ pad: "Boxa", how: "Propose the router as creator from your wallet, then activate: the router is created and accepts in the same transaction.", wait: "instant" }],
+  ascend: [
+    { pad: "Ascend, launched here", how: "Launch on Ascend from this page. The router is the coin's fee wallet from the first trade, so there's nothing to hand over.", wait: "none" },
+    {
+      pad: "Ascend, launched on Ascend",
+      how: "Propose the router on the coin's Ascend escrow, activate, then accept. Ascend's contract makes every change of fee wallet wait 48 hours.",
+      wait: "48 hours",
+    },
+  ],
+};
+const ELYSPUMP: Handover = { pad: "ElysPump", how: "Not on Monarchy yet. Its own fee wallet change is instant too.", wait: "not supported" };
+const WAIT_TONE = { instant: "green", none: "green", "48 hours": "amber", "not supported": "grey" } as const;
+
+/** The launchpads side by side, for a creator who hasn't pasted a coin yet: only Ascend has a wait. */
+function HandoverTable({ list, canLaunch }: { list: { info: PadInfo }[]; canLaunch: boolean }) {
+  const rows = [...list.flatMap(({ info }) => HANDOVERS[info.key].filter((r) => canLaunch || r.wait !== "none")), ELYSPUMP];
+  return (
+    <Card title="How each launchpad hands over">
+      <p className="muted small">
+        Each launchpad has its own way of moving a coin's creator fees to a new owner. Only Ascend makes it wait, and only for coins
+        launched on Ascend's own site.
+      </p>
+      <div className="table-wrap">
+        <table className="table handover">
+          <thead>
+            <tr>
+              <th>Launchpad</th>
+              <th>How the router takes over</th>
+              <th>Wait</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.pad}>
+                <td>{r.pad}</td>
+                <td className="muted">{r.how}</td>
+                <td>
+                  <Badge tone={WAIT_TONE[r.wait]}>{r.wait === "none" ? "no wait" : r.wait}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 
@@ -243,6 +297,8 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
         <p className="muted small pad-found">
           Found on <b className="text">{target.info.name}</b>
           {target.info.quotes && <>, paired with {target.info.quotes.find((q) => same(q.address, target.quote))?.symbol}</>}.{" "}
+          {!target.router &&
+            (target.info.delayed ? "Its fee wallet moves to the router 48 hours after you propose it. " : "The router takes over its creator fees as soon as you activate. ")}
           <a href={target.info.site} target="_blank" rel="noreferrer">
             {target.info.site.replace("https://", "")} <span aria-hidden="true">↗</span>
           </a>

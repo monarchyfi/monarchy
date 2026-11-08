@@ -34,7 +34,7 @@ On Ascend the creator role collects a share of every swap fee: half of a 1% fee 
 
 ### On Ascend's mainnet launchpad (v5)
 
-Ascend v5 gives each coin a creator escrow. There are two ways onto Monarchy: launch a new coin through Monarchy's `AscendV5Launcher`, which makes its router the escrow's recipient from the first trade in the same transaction, or launch on Ascend as a Vanilla coin and switch, where the creator proposes its Lodestar as the escrow's recipient and 48 hours later anyone completes the hand-off (Ascend's wait, which nobody can shorten). Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
+Ascend v5 gives each coin a creator escrow. There are two ways onto Monarchy: launch a new coin through Monarchy's `AscendV5Launcher`, which makes its router the escrow's recipient from the first trade in the same transaction and stores the coin's picture on chain, or launch on Ascend as a Vanilla coin and switch, where the creator proposes its Lodestar as the escrow's recipient and 48 hours later anyone completes the hand-off (Ascend's wait, which nobody can shorten). Buybacks run through the coin's own Uniswap v4 pool at any fee Ascend allows. The mainnet deploy, activation and keeper scripts and the website's Lodestar page cover it alongside Eleos, Kleos and Boxa. See [docs/ascend-v5.md](docs/ascend-v5.md) for the activation steps, how Ascend's held fees work and what is still to deploy.
 
 ### On Eleos, Kleos and Boxa
 
