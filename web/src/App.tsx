@@ -1,12 +1,15 @@
 import { Fragment, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { useConnect, useConnection, useConnectors } from "wagmi";
+import { useChainId, useConnect, useConnection, useConnectors } from "wagmi";
 import { Connect } from "./components/Connect";
 import { CrownSolid } from "./components/Crown";
 import { CastleGlyph, GardenGlyph, GateGlyph, HourglassGlyph, StarGlyph } from "./components/NavGlyphs";
 import { NetworkNotice, TestnetStrip } from "./components/States";
+import { explorerAddress } from "./lib/chains";
 import { MONARCHY_CA } from "./lib/constants";
+import { isSet, useDeployment } from "./lib/deployments";
 import { short } from "./lib/format";
+import { launchpadsByChain } from "./lib/launchpads";
 import { useMock } from "./lib/wagmi";
 import { ExilePage } from "./pages/Exile";
 import { GardenPage } from "./pages/Garden";
@@ -92,6 +95,7 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
   const home = pathname === "/";
+  const contracts = useContractsLink();
   useMockAutoConnect();
 
   // close the phone menu and go to the top on every navigation
@@ -194,9 +198,11 @@ export function App() {
             <a href="https://docs.monarchy.fi" target="_blank" rel="noreferrer">
               Docs
             </a>
-            <a href="https://github.com/monarchy-fi/monarchy" target="_blank" rel="noreferrer">
-              GitHub
-            </a>
+            {contracts && (
+              <a href={contracts} target="_blank" rel="noreferrer">
+                Contracts
+              </a>
+            )}
           </div>
         </footer>
       )}
@@ -215,4 +221,12 @@ function useMockAutoConnect() {
     if (c) connect.mutate({ connector: c });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, connectors]);
+}
+
+/** Exile's page in the explorer, where the verified source of this chain's Monarchy contracts can be read. */
+function useContractsLink(): string | undefined {
+  const chainId = useChainId();
+  const d = useDeployment();
+  const exile = launchpadsByChain[chainId]?.exile ?? d?.exile;
+  return isSet(exile) ? explorerAddress(chainId, exile) : undefined;
 }

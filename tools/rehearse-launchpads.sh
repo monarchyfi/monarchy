@@ -6,7 +6,8 @@
 #   ELYSIUM_RPC_URL=https://rpc.eleos.fun [FORK_BLOCK=2845000] tools/rehearse-launchpads.sh
 #
 # 1. DeployLaunchpads with anvil's first key, an anvil EOA standing in for the multisig (ALLOW_EOA_OWNER=true).
-# 2. Twelve hours later FinishLaunchpads, and the stand-in multisig accepts Exile.
+#    Exile is still empty, so the ElysPump, Boxa and Kleos factories become registrars in the same run, no wait.
+# 2. FinishLaunchpads right away (it only checks the registrars now), and the stand-in multisig accepts Exile.
 # 3. One coin per launchpad: ETF (Volta), ELYSA (Montra), MIX (ElysPump v2 hook), CHUD (Boxa pairs hook) and
 #    BULL (Kleos hook A). MIX, CHUD and BULL pay their holders dividends, so Exile's harvest runs for them; Volta pays
 #    holders to wallets only and Montra's coin pays its creator side to one recipient, so those two have no
@@ -82,8 +83,13 @@ PRIVATE_KEY=$DEPLOYER_KEY FACTORY_OWNER=$OWNER ALLOW_EOA_OWNER=true script Deplo
 EXILE=$(jq -r .exile "$FILE")
 OBSERVER=$(jq -r .observer "$FILE")
 
-echo "== 2. FinishLaunchpads, 12 hours later"
-warp 43201
+for pad in elyspump boxa kleos; do
+  f=$(jq -r --arg p "$pad" '.launchpads[$p].factory' "$FILE")
+  [ "$(call "$EXILE" "isRegistrar(address)(bool)" "$f")" = true ] || { echo "$pad factory isn't a registrar after the deploy"; exit 1; }
+done
+echo "   the ElysPump, Boxa and Kleos factories are Exile registrars straight after the deploy"
+
+echo "== 2. FinishLaunchpads, with no wait"
 PRIVATE_KEY=$KEEPER_KEY script FinishLaunchpads.s.sol
 send "$EXILE" "acceptOwner()" --private-key "$OWNER_KEY"
 [ "$(call "$EXILE" "owner()(address)")" = "$OWNER" ] || { echo "Exile owner not handed over"; exit 1; }

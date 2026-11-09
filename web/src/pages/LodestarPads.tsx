@@ -702,7 +702,7 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
         {elyspump && share.data !== undefined && <Row k="The router's share of each trade's fee" v={pct((share.data * 7n) / 10n)} />}
         {volta && vo.data && <Row k="The router's share of each trade's fee" v={pct((vo.data[1] * 7n) / 10n)} />}
       </div>
-      {notReady && <p className="warn small">Monarchy is still finishing its setup on {info.name}. Activations open within a day of launch.</p>}
+      {notReady && <p className="warn small">Monarchy is still finishing its setup on {info.name}. Activations open within 12 hours.</p>}
       <ol className="steps">
         {steps.map((st, i) => (
           <li key={st.title} className={st.done ? "done" : ""}>

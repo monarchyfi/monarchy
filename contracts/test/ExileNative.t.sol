@@ -290,6 +290,50 @@ contract ExileNativeTest is Test {
         assertFalse(exile.isRegistrar(r));
     }
 
+    function test_registrarAtOnceWhileEmpty() public {
+        // setUp made no pool and no lock, so this Exile is still empty
+        address r = makeAddr("r2");
+        vm.prank(alice);
+        vm.expectRevert(Exile.OnlyOwner.selector);
+        exile.addRegistrarWhileEmpty(r);
+        vm.expectRevert(Exile.ZeroAddress.selector);
+        exile.addRegistrarWhileEmpty(address(0));
+        exile.proposeRegistrar(r);
+        vm.expectEmit(true, false, false, false, address(exile));
+        emit Exile.RegistrarAdded(r);
+        exile.addRegistrarWhileEmpty(r);
+        assertTrue(exile.isRegistrar(r));
+        assertEq(exile.registrarEta(r), 0, "the pending proposal is cleared");
+        // and it names harvests like any registrar
+        uint256 poolId = _pool(address(0));
+        vm.prank(r);
+        exile.setHarvest(address(token), poolId, address(token), CLAIM_FOR);
+    }
+
+    function test_registrarAtOnceClosesWithTheFirstPool() public {
+        _pool(address(0));
+        vm.expectRevert(Exile.ExileInUse.selector);
+        exile.addRegistrarWhileEmpty(makeAddr("r2"));
+    }
+
+    function test_registrarAtOnceClosesWithTheFirstLockForGood() public {
+        // a plain lock (no pool) closes it too, and it stays closed after the lock is withdrawn
+        uint256 id = _lock(alice, 0, 1e18, 1 days);
+        vm.expectRevert(Exile.ExileInUse.selector);
+        exile.addRegistrarWhileEmpty(makeAddr("r2"));
+        skip(2 days); // unlocks round up to the hour
+        vm.prank(alice);
+        exile.withdraw(id);
+        vm.expectRevert(Exile.ExileInUse.selector);
+        exile.addRegistrarWhileEmpty(makeAddr("r2"));
+        // from then on a registrar waits the 12 hours
+        address r = makeAddr("r3");
+        exile.proposeRegistrar(r);
+        skip(12 hours);
+        exile.addRegistrar(r);
+        assertTrue(exile.isRegistrar(r));
+    }
+
     function test_registrarProposalExpires() public {
         address r = makeAddr("r2");
         exile.proposeRegistrar(r);

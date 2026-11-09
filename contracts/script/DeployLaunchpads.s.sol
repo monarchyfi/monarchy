@@ -33,12 +33,13 @@ import {IAscendV5Launchpad} from "../src/interfaces/IAscendV5.sol";
 ///   also an AscendV5Launcher, which launches new coins with their router as fee owner from the first trade. The
 ///   factory only takes its launches once the owner calls `setLauncher` (printed when the deployer isn't the owner).
 /// FACTORY_OWNER (required) owns every factory and adapter and is handed Exile; on mainnet it must be a multisig.
-/// Each factory names its routers' harvests in Exile, so it has to become an Exile registrar, which takes 12 hours:
-/// this script proposes the ElysPump, Boxa and Kleos factories, and FinishLaunchpads adds them once the timelock has
-/// passed (anyone may run it). Ascend v5, Volta and Montra routers never name a harvest, so their factories never
-/// need the role and their routers can activate straight away.
-/// Exile goes to FACTORY_OWNER in the same run, so the multisig must then call `Exile.acceptOwner()`.
-/// No ElysPump, Boxa or Kleos router can activate before FinishLaunchpads. On a fork from before Ascend v5 went live
+/// Each factory names its routers' harvests in Exile, so the ElysPump, Boxa and Kleos factories have to become Exile
+/// registrars. On a fresh deploy Exile is still empty (no pool, no lock), so this script adds them at once with
+/// `addRegistrarWhileEmpty` and their routers can activate straight away. Once anything is in Exile (a re-run after
+/// the first activation, or a lock that lands mid-deploy) a registrar takes 12 hours: this script proposes it and
+/// FinishLaunchpads adds it once the timelock has passed (anyone may run it). Ascend v5, Volta and Montra routers
+/// never name a harvest, so their factories never need the role.
+/// Exile goes to FACTORY_OWNER in the same run, so the multisig must then call `Exile.acceptOwner()`. On a fork from before Ascend v5 went live
 /// (block 422319) the Ascend pad is skipped.
 contract DeployLaunchpads is LaunchpadsBase {
     function run() external {
@@ -82,9 +83,22 @@ contract DeployLaunchpads is LaunchpadsBase {
 
         Exile exile = Exile(payable(d.exile));
         bool exileMine = exile.owner() == me;
+        // nothing in Exile yet: its owner adds the factories at once, with no one's coins inside to protect
+        bool empty = exile.poolCount() == 0 && exile.lockCount() == 0;
+        bool waiting;
         for (uint256 i; i < PADS; ++i) {
             address f = d.pads[i].factory;
             if (!_needsRegistrar(i) || !_has(f) || exile.isRegistrar(f)) continue;
+            if (empty) {
+                if (exileMine) {
+                    exile.addRegistrarWhileEmpty(f);
+                } else {
+                    console2.log("Exile's owner must add this factory as a registrar (no wait while Exile is empty):", f);
+                    console2.logBytes(abi.encodeCall(Exile.addRegistrarWhileEmpty, (f)));
+                }
+                continue;
+            }
+            waiting = true;
             uint64 eta = exile.registrarEta(f);
             // a proposal still inside its window would only restart its 12 hours
             if (eta != 0 && block.timestamp <= eta + exile.EXECUTION_WINDOW()) continue;
@@ -114,7 +128,8 @@ contract DeployLaunchpads is LaunchpadsBase {
         }
         console2.log("owner", owner);
         if (exile.pendingOwner() == owner) console2.log("next: the owner calls Exile.acceptOwner()");
-        console2.log("next: FinishLaunchpads after", uint256(exile.TIMELOCK()), "seconds");
+        if (waiting) console2.log("next: FinishLaunchpads after", uint256(exile.TIMELOCK()), "seconds");
+        else console2.log("every factory that names harvests is already an Exile registrar: no FinishLaunchpads needed");
     }
 
     function _deployPad(Launchpads memory d, uint256 i, address owner) internal returns (Pad memory p) {

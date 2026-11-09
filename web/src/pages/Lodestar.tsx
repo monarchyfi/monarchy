@@ -270,7 +270,7 @@ export function Router({ env, lodestar }: { env: RouterEnv; lodestar: Address })
           <p className="footnote">
             * {lockWaiting ? "Once the router holds the role, the" : "The"} one way out Monarchy allows is a move to this token's router on a newer Monarchy factory, approved by Monarchy and the steward and announced here 7 days ahead.
             {env.lockNote ? <> {env.lockNote}</> : null}{" "}
-            <a href="https://github.com/monarchy-fi/monarchy#security-model" target="_blank" rel="noreferrer">
+            <a href="https://docs.monarchy.fi" target="_blank" rel="noreferrer">
               How upgrades work
             </a>
           </p>

@@ -135,6 +135,19 @@ export const exileAbi = [
   },
   {
     "type": "function",
+    "name": "addRegistrarWhileEmpty",
+    "inputs": [
+      {
+        "name": "registrar",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "cancelTiers",
     "inputs": [
       {
@@ -1751,6 +1764,11 @@ export const exileAbi = [
   {
     "type": "error",
     "name": "AlreadyWithdrawn",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ExileInUse",
     "inputs": []
   },
   {

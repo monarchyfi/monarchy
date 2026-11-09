@@ -7,7 +7,7 @@
 ### Lock to earn. Vest in the open. For coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos.
 
 [![CI](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml)
-[![Tests: 237 passing](https://img.shields.io/badge/Foundry-237%20tests%20passing-111111.svg)](contracts/test)
+[![Tests: 240 passing](https://img.shields.io/badge/Foundry-240%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
@@ -217,7 +217,7 @@ The keeper (`.github/workflows/distribute.yml`) calls `distribute()` every 3 hou
 
 ### Ascend v5, Volta, Montra, ElysPump, Boxa and Kleos on Elysium mainnet
 
-`DeployLaunchpads`, then `FinishLaunchpads` 12 hours later, deploy the shared core, an adapter, a buyback swapper per pool manager and a factory per launchpad; creators activate with `ActivateLaunchpad`, and `tools/keeper-launchpads.sh` keeps every router distributing and harvesting. `tools/rehearse-launchpads.sh` and `tools/rehearse-ascend-v5.sh` run all of it on a local fork first. The steps, the owner's powers and the per-launchpad details are in [docs/launchpads.md](docs/launchpads.md).
+`DeployLaunchpads` (with `FinishLaunchpads` after it, a check unless a registrar had to wait 12 hours) deploys the shared core, an adapter, a buyback swapper per pool manager and a factory per launchpad; creators activate with `ActivateLaunchpad`, and `tools/keeper-launchpads.sh` keeps every router distributing and harvesting. `tools/rehearse-launchpads.sh` and `tools/rehearse-ascend-v5.sh` run all of it on a local fork first. The steps, the owner's powers and the per-launchpad details are in [docs/launchpads.md](docs/launchpads.md).
 
 ## Status and roadmap
 

@@ -34,7 +34,7 @@ import {IExile} from "./interfaces/IExile.sol";
 /// those dividends for itself and pays what arrives to the token's harvest pool, where it drips to lockers like
 /// any other reward. HYPE a token pushes to Exile on its own (a permissionless claim made for Exile) is counted per
 /// sender and joins that token's next harvest. Only registrars (Monarchy's factories, added by the owner behind a
-/// 12 hour timelock) name harvest pools, and the call has one of three fixed shapes, never with value:
+/// 12 hour timelock, or at once while Exile is still empty) name harvest pools, and the call has one of three fixed shapes, never with value:
 /// `claimFor(exile)`, `claimRewards(exile)` (Kleos) or `claim()` (ElysPump) on the token itself, or
 /// `claimRewards(token, exile)` on the token's hook (Boxa). The owner can never move a locked token or a reward.
 contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
@@ -224,6 +224,7 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     error NotPendingOwner();
     error NotRegistrar();
     error NoPendingRegistrar();
+    error ExileInUse();
     error InvalidHarvest();
     error NoHarvest();
     error HarvestPoolOnly();
@@ -342,6 +343,18 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
         uint64 eta = uint64(block.timestamp) + TIMELOCK;
         registrarEta[registrar] = eta;
         emit RegistrarProposed(registrar, eta);
+    }
+
+    /// @notice Add a registrar at once, only while Exile is still empty: no pool has been created and nothing has ever
+    /// been locked, so no one's coins are inside for the 12 hours to protect. The deploy uses it to add Monarchy's
+    /// first factories in the same run. From the first pool or lock on, every registrar waits out `proposeRegistrar`.
+    function addRegistrarWhileEmpty(address registrar) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        if (registrar == address(0)) revert ZeroAddress();
+        if (poolCount != 0 || lockCount != 0) revert ExileInUse();
+        delete registrarEta[registrar];
+        isRegistrar[registrar] = true;
+        emit RegistrarAdded(registrar);
     }
 
     function addRegistrar(address registrar) external {

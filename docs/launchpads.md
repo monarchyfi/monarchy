@@ -101,26 +101,29 @@ export RPC_URL=<an Elysium mainnet RPC> PRIVATE_KEY=<the deployer> FACTORY_OWNER
 
 # 1. The shared core, the adapters with their hooks, a buyback swapper per pool manager and a factory per launchpad
 #    (Ascend v5 included: its adapter, an AscendV5Swapper and its factory, see docs/ascend-v5.md).
-#    Proposes the ElysPump, Boxa and Kleos factories as Exile registrars and hands Exile to FACTORY_OWNER.
+#    Adds the ElysPump, Boxa and Kleos factories as Exile registrars at once (Exile is still empty, so there is no
+#    wait; see below) and hands Exile to FACTORY_OWNER.
 #    Writes deployments/launchpads/99901.json. Safe to re-run: it only deploys what the file doesn't record.
 forge script contracts/script/DeployLaunchpads.s.sol --rpc-url $RPC_URL --broadcast --slow
 
 # 2. The Safe calls Exile.acceptOwner().
 
-# 3. Twelve hours later (and within 7 days), any funded key adds the registrars. Activations can start then
-#    (Ascend v5, Volta and Montra activations can start right after step 1: Exile harvests nothing there, so their
-#    factories need no registrar).
+# 3. Activations on every launchpad can start right after step 1. FinishLaunchpads checks that the registrars are
+#    in place. It only has work to do if step 1 had to propose them instead (see below): then it adds them 12 hours
+#    later (and within 7 days), from any funded key.
 forge script contracts/script/FinishLaunchpads.s.sol --rpc-url $RPC_URL --broadcast --slow
 
 # 4. The keeper: set the MAINNET_KEEPER_PRIVATE_KEY secret (a wallet that only holds gas) and the
 #    MAINNET_RPC_URL repository variable, and commit deployments/launchpads/99901.json.
 ```
 
+**Registrars at deploy.** Exile's owner adds a registrar behind a 12 hour timelock, except while Exile is still empty: until the first pool is created or the first lock is made, `addRegistrarWhileEmpty` adds one at once, because no one's coins are inside for the wait to protect. A fresh deploy uses it, so ElysPump, Boxa and Kleos coins can activate as soon as the deploy has run. The first pool or lock closes that path for good. If someone locks something in Exile between its deployment and the registrar transactions, the deploy reverts at that point; run it again and it proposes the registrars instead, and FinishLaunchpads adds them 12 hours later.
+
 `DeployLaunchpads` refuses a `FACTORY_OWNER` without code on chain unless `ALLOW_EOA_OWNER=true`. The file lives in `deployments/launchpads/` rather than `deployments/` because the website reads every `deployments/*.json` as an Ascend deployment; it reads this one separately. Once the file is committed, the site's Lodestar page on Elysium mainnet has the creator pick the launchpad (Ascend first) and paste the coin, checks with that factory's `predict` that the coin really is on it (and names the right launchpad when it isn't), works the router address out from this file rather than trusting the RPC, and walks the creator through that launchpad's activation order; Exile lock transactions go out with 30% gas headroom. To try it on a fork, run the deploy steps of the rehearsal and start the dev server with `VITE_LAUNCHPADS_REHEARSAL=1 VITE_MAINNET_RPC_URL=http://127.0.0.1:8547 VITE_CHAIN_ID=99901`. When the Ascend core reaches mainnet, `DeployCore` reuses this Exile, Sandfall and Lodestar implementation, so every Monarchy router shares one Exile.
 
 **Verify the sources.** elysiumexplore.com answers the Etherscan API shape at `https://elysiumexplore.com/api` (its `getabi` returns verified launchpad contracts), so `forge verify-contract <address> <path>:<Contract> --verifier etherscan --verifier-url https://elysiumexplore.com/api --etherscan-api-key any --chain 99901 --constructor-args <...>` should work; it hasn't been tried yet because nothing is deployed.
 
-**Rehearse first.** `tools/rehearse-ascend-v5.sh` does the same for Ascend v5 on a fork of the latest block (see docs/ascend-v5.md). `ELYSIUM_RPC_URL=https://rpc.eleos.fun tools/rehearse-launchpads.sh` runs the whole rollout on a local anvil fork of mainnet and sends nothing to the real chain: deploy, the 12 hour wait, finish, the multisig accepting Exile, an activation on each launchpad as the creator (ETF on Volta, MIX on ElysPump's v2 hook, CHUD on Boxa's pairs hook, BULL on Kleos hook A, ELYSA on Montra, which claims what the role brought with it first), a locker locking each coin, trading, and two keeper runs. It checks that every router paid lockers and the treasury, that Exile harvested dividends on the three coins that pay them (MIX, CHUD, BULL), that the phase 2 router (BULL, `SWAPPER=v4`) bought back and burned while the others kept the buyback share in reserve, and that a second keeper run right after doesn't buy back again inside the 30 minute interval.
+**Rehearse first.** `tools/rehearse-ascend-v5.sh` does the same for Ascend v5 on a fork of the latest block (see docs/ascend-v5.md). `ELYSIUM_RPC_URL=https://rpc.eleos.fun tools/rehearse-launchpads.sh` runs the whole rollout on a local anvil fork of mainnet and sends nothing to the real chain: deploy (checking that the three registrars are in place with no wait), finish, the multisig accepting Exile, an activation on each launchpad as the creator (ETF on Volta, MIX on ElysPump's v2 hook, CHUD on Boxa's pairs hook, BULL on Kleos hook A, ELYSA on Montra, which claims what the role brought with it first), a locker locking each coin, trading, and two keeper runs. It checks that every router paid lockers and the treasury, that Exile harvested dividends on the three coins that pay them (MIX, CHUD, BULL), that the phase 2 router (BULL, `SWAPPER=v4`) bought back and burned while the others kept the buyback share in reserve, and that a second keeper run right after doesn't buy back again inside the 30 minute interval.
 
 ## The keeper
 
@@ -143,11 +146,11 @@ Every send is dry-run first, refused above `MAX_GAS` (default 4,000,000), sent w
 - name a successor factory for upgrades and the default swapper for new activations (each behind its own delay),
 - deploy a stranded one-step router for its creator (`rescueDeploy`),
 - name the launcher that launches new Ascend v5 coins straight into a router (`setLauncher`, Ascend's factory only),
-- propose and remove Exile registrars (adding one waits 12 hours).
+- propose and remove Exile registrars (adding one waits 12 hours, except while Exile is still empty at deploy).
 
 It can't touch routed fees, locks or streams. Three of those powers need a check by the signers each time, because nothing on chain does it for them:
 
-- **A new registrar.** A registrar can point any coin's harvest at a pool of its own and collect that coin's dividends there, so the only registrars should be the ElysPump, Boxa and Kleos factories. Watch Exile for `RegistrarProposed`: a proposal nobody planned has 12 hours before it can be added, and `removeRegistrar` drops it at once. A check in `setHarvest` on who created the pool wouldn't help, since a hostile registrar could create its own pool.
+- **A new registrar.** A registrar can point any coin's harvest at a pool of its own and collect that coin's dividends there, so the only registrars should be the ElysPump, Boxa and Kleos factories. Watch Exile for `RegistrarProposed`: a proposal nobody planned has 12 hours before it can be added, and `removeRegistrar` drops it at once. A `RegistrarAdded` with no proposal before it can only come from the deploy, while Exile was still empty; check that the deploy's ones are exactly the three factories in the deployments file. A check in `setHarvest` on who created the pool wouldn't help, since a hostile registrar could create its own pool.
 - **A new launcher.** `deployLaunched` deploys a router for whatever steward and settings the named launcher passes, but only for a coin whose escrow already pays that router's address, which only happens to coins launched with it as recipient. Name only the `AscendV5Launcher` from the deployments file, whose code passes the caller as steward.
 - **A rescue deploy.** The settings in `rescueDeploy` calldata (split, swapper, treasury recipient, treasury window, steward) are whatever its author wrote, and nothing the creator signed binds them. Compare them with what the creator asked for, in writing and from the creator's address, before signing.
 

@@ -62,10 +62,15 @@ abstract contract ForkBase is Test {
         f = new LodestarFactory(
             address(impl), source, exile, ISandfall(address(sandfall)), address(0), address(this)
         );
-        // the factory names harvest pools, so it becomes an Exile registrar behind the 12 hour timelock
-        exile.proposeRegistrar(address(f));
-        skip(12 hours);
-        exile.addRegistrar(address(f));
+        // the factory names harvest pools, so it becomes an Exile registrar: at once while Exile is still empty, as
+        // in the mainnet deploy, and behind the 12 hour timelock after that
+        if (exile.poolCount() == 0 && exile.lockCount() == 0) {
+            exile.addRegistrarWhileEmpty(address(f));
+        } else {
+            exile.proposeRegistrar(address(f));
+            skip(12 hours);
+            exile.addRegistrar(address(f));
+        }
     }
 
     function _swapper(address pm) internal returns (V4Swapper s) {
