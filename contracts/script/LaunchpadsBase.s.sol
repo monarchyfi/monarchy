@@ -7,7 +7,7 @@ import {LodestarFactory} from "../src/LodestarFactory.sol";
 import {ILodestar} from "../src/interfaces/ILodestar.sol";
 import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
 
-/// @notice Monarchy on the Uniswap v4 launchpads of Elysium mainnet (Ascend v5, Volta, ElysPump, Boxa, Kleos, Montra):
+/// @notice Monarchy on the Uniswap v4 launchpads of Elysium mainnet (Ascend v5, Volta, Montra, ElysPump, Boxa, Kleos):
 /// the hook registries the adapters start with, and `deployments/launchpads/<chainId>.json`, which records one shared core
 /// (Exile, Sandfall, the Lodestar implementation, the price observer) plus an adapter, a factory and a buyback
 /// swapper per pool manager for each launchpad (a V4Swapper, or an AscendV5Swapper on Ascend). The routers themselves are not listed: each factory's `allLodestars` is the list.
@@ -23,10 +23,10 @@ abstract contract LaunchpadsBase is BaseScript {
     /// @dev The launchpads in the website's order.
     uint256 internal constant ASCEND = 0;
     uint256 internal constant VOLTA = 1;
-    uint256 internal constant ELYSPUMP = 2;
-    uint256 internal constant BOXA = 3;
-    uint256 internal constant KLEOS = 4;
-    uint256 internal constant MONTRA = 5;
+    uint256 internal constant MONTRA = 2;
+    uint256 internal constant ELYSPUMP = 3;
+    uint256 internal constant BOXA = 4;
+    uint256 internal constant KLEOS = 5;
 
     struct Pad {
         address source; // the launchpad's IFeeSource adapter
@@ -56,12 +56,12 @@ abstract contract LaunchpadsBase is BaseScript {
         revert("no such launchpad");
     }
 
-    /// @dev LAUNCHPAD=ascend|volta|elyspump|boxa|kleos|montra
+    /// @dev LAUNCHPAD=ascend|volta|montra|elyspump|boxa|kleos
     function _padIndex(string memory name) internal pure returns (uint256) {
         for (uint256 i; i < PADS; ++i) {
             if (keccak256(bytes(name)) == keccak256(bytes(_padName(i)))) return i;
         }
-        revert("LAUNCHPAD must be ascend, volta, elyspump, boxa, kleos or montra");
+        revert("LAUNCHPAD must be ascend, volta, montra, elyspump, boxa or kleos");
     }
 
     /// @notice The hooks each adapter knows at deploy, with their kinds, and the pool managers they swap on. Read
@@ -215,7 +215,7 @@ abstract contract LaunchpadsBase is BaseScript {
             swapper = vm.parseAddress(s);
         }
         p.token = token;
-        p.quote = quote; // native HYPE on Volta, ElysPump, Boxa, Kleos and Montra; an ERC-20 on Ascend v5
+        p.quote = quote; // native HYPE on Volta, Montra, ElysPump, Boxa and Kleos; an ERC-20 on Ascend v5
         p.cfg = ILodestar.Config({
             burnBps: uint16(vm.envOr("BURN_BPS", uint256(2_000))),
             holdersBps: uint16(vm.envOr("HOLDERS_BPS", uint256(5_000))),

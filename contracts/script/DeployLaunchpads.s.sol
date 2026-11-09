@@ -23,7 +23,7 @@ import {ElysPumpFeeSource} from "../src/sources/ElysPumpFeeSource.sol";
 import {MontraFeeSource} from "../src/sources/MontraFeeSource.sol";
 import {IAscendV5Launchpad} from "../src/interfaces/IAscendV5.sol";
 
-/// @notice Step 1 of 2 for Monarchy on Ascend v5, Volta, ElysPump, Boxa, Kleos and Montra (Elysium mainnet). Deploys what
+/// @notice Step 1 of 2 for Monarchy on Ascend v5, Volta, Montra, ElysPump, Boxa and Kleos (Elysium mainnet). Deploys what
 /// deployments/launchpads/<chainId>.json doesn't already record, so a run that stopped halfway can be repeated:
 /// - the shared core: Exile, Sandfall, the Lodestar implementation (reused from deployments/<chainId>.json when the
 ///   Ascend core is already on this chain, so every Monarchy router shares one Exile) and the V4PriceObserver;

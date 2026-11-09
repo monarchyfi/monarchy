@@ -29,7 +29,7 @@ export function LodestarPage() {
   const defaultToken = d && isSet(d.token) ? d.token : undefined;
   const [defaultMeta, defaultQuoteMeta] = useTokenMeta([defaultToken, d?.quote]);
   if (!d) return <NoDeployment />;
-  // Elysium mainnet: the coins to activate are on Ascend v5, Volta, ElysPump, Boxa, Kleos and Montra
+  // Elysium mainnet: the coins to activate are on Ascend v5, Volta, Montra, ElysPump, Boxa and Kleos
   if (d.pads && d.mode === "launchpads") return <PadsLodestar pads={d.pads} />;
   const token = isAddress(input) ? input : defaultToken;
   const badInput = input !== "" && !isAddress(input);

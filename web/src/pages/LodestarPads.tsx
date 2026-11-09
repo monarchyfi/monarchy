@@ -45,7 +45,7 @@ import { AscendLaunch, CoinProfileCard, TwoWays } from "./AscendLaunch";
 /** IFeeSource.Handover.OneStep */
 const ONE_STEP = 1;
 
-/** The Lodestar page on a chain with Ascend v5, Volta, ElysPump, Boxa, Kleos and Montra: the creator picks the launchpad and
+/** The Lodestar page on a chain with Ascend v5, Volta, Montra, ElysPump, Boxa and Kleos: the creator picks the launchpad and
  * pastes a coin, the page checks the coin really is on that launchpad, then shows its router or the activation steps
  * that launchpad needs. */
 export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {

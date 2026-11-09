@@ -11,7 +11,7 @@ import { Addr, Badge, Card, Empty, Skel, Stat, TokenAddr } from "../components/U
 import { useDeployment, ZERO } from "../lib/deployments";
 import { compact, duration, fmt, label, mult, short } from "../lib/format";
 import { useNow, usePageTitle } from "../lib/hooks";
-import { useLodestarCore, useTokenMeta, type TokenMeta } from "../lib/monarchy";
+import { useFactories, useLodestarCore, useTokenMeta, type TokenMeta } from "../lib/monarchy";
 
 /** Reads stop here, newest first; past it the page says how many it left out. */
 const CAP = 2000;
@@ -64,11 +64,18 @@ export function GardenPage() {
       { address: d?.exile, abi: exileAbi, functionName: "lockCount" },
       { address: d?.exile, abi: exileAbi, functionName: "poolCount" },
       { address: d?.sandfall, abi: sandfallAbi, functionName: "streamCount" },
-      { address: d?.factory, abi: lodestarFactoryAbi, functionName: "allLodestarsLength" },
     ],
     query: { enabled: !!d, ...SLOW.query },
   });
-  const [lockCount, poolCount, streamCount, routerCount] = counts.data ?? [];
+  const [lockCount, poolCount, streamCount] = counts.data ?? [];
+  // every factory on this chain: Ascend's on the testnet, one per launchpad on Elysium mainnet
+  const factories = useFactories();
+  const factoryCounts = useReadContracts({
+    allowFailure: false,
+    contracts: factories.map((f) => ({ address: f, abi: lodestarFactoryAbi, functionName: "allLodestarsLength" }) as const),
+    query: { enabled: factories.length > 0, ...SLOW.query },
+  });
+  const routerCount = factories.length === 0 ? 0n : factoryCounts.data?.reduce((a, n) => a + n, 0n);
 
   const lockIds = useMemo(() => newest(lockCount), [lockCount]);
   const lockReads = useReadContracts({
@@ -94,11 +101,17 @@ export function GardenPage() {
     ),
     query: { enabled: !!d && streamIds.length > 0, ...SLOW.query },
   });
-  // allLodestars is 0-indexed
-  const routerIdx = useMemo(() => (routerCount ? newest(routerCount, 1n).map((i) => i - 1n) : []), [routerCount]);
+  // allLodestars is 0-indexed; newest first in each factory, at most CAP in all
+  const routerIdx = useMemo(() => {
+    const out: { factory: Address; i: bigint }[] = [];
+    (factoryCounts.data ?? []).forEach((n, k) => {
+      for (const i of newest(n, 1n)) if (out.length < CAP) out.push({ factory: factories[k], i: i - 1n });
+    });
+    return out;
+  }, [factoryCounts.data, factories]);
   const routerAddrs = useReadContracts({
     allowFailure: false,
-    contracts: routerIdx.map((i) => ({ address: d?.factory, abi: lodestarFactoryAbi, functionName: "allLodestars", args: [i] }) as const),
+    contracts: routerIdx.map(({ factory, i }) => ({ address: factory, abi: lodestarFactoryAbi, functionName: "allLodestars", args: [i] }) as const),
     query: { enabled: !!d && routerIdx.length > 0, staleTime: 60_000 },
   });
   const routerList = (routerAddrs.data ?? []) as Address[];

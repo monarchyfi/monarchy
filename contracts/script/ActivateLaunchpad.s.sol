@@ -16,14 +16,14 @@ import {IAscendV5Escrow} from "../src/interfaces/IAscendV5.sol";
 import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
 import {MockArbSys} from "../src/mocks/MockArbSys.sol";
 
-/// @notice Activate a Lodestar for a coin on Ascend v5, Volta, ElysPump, Boxa, Kleos or Montra, run by the coin's
+/// @notice Activate a Lodestar for a coin on Ascend v5, Volta, Montra, ElysPump, Boxa or Kleos, run by the coin's
 /// creator (PRIVATE_KEY is the address the launchpad records as creator: the holder of the creator NFT on Volta, the
 /// fee receiver on ElysPump, the pool's recipient on Montra).
-/// LAUNCHPAD=ascend|volta|elyspump|boxa|kleos|montra, TOKEN=<coin>,
+/// LAUNCHPAD=ascend|volta|montra|elyspump|boxa|kleos, TOKEN=<coin>,
 /// TREASURY=<Team Treasury recipient, permanent>. The order follows the launchpad, so a creator can't get it wrong:
 /// - Boxa (two-step, like Ascend): `proposeCreator(poolId, router)` on the hook, then `factory.deploy`, which
 ///   accepts the role.
-/// - Volta, ElysPump, Kleos and Montra (one-step): `factory.deploy` first, then the hand-over (Volta: the creator
+/// - Volta, Montra, ElysPump and Kleos (one-step): `factory.deploy` first, then the hand-over (Volta: the creator
 ///   NFT's `transferFrom(creator, router, id)`; ElysPump: `setFeeReceiver(coin, router)`; Kleos:
 ///   `transferCreator(coin, router)`; Montra: `updateRecipient(poolId, router)`). If the second transaction doesn't
 ///   land, run the script again: it sees the router and only hands the role over.

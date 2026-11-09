@@ -803,3 +803,5 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
 /* the Lodestar page's launchpad check: the coin is on the launchpad the creator picked */
 .pad-check { display: flex; gap: 8px; align-items: baseline; margin: 0 0 16px; padding: 10px 14px; border: 1px solid rgba(155, 224, 176, 0.45); color: var(--muted, inherit); line-height: 1.5; }
 .pad-check-mark { color: var(--green); font-weight: 700; }
+.check.opt-out { margin: 0 0 16px; align-items: flex-start; line-height: 1.5; }
+.check.opt-out input { margin-top: 4px; }

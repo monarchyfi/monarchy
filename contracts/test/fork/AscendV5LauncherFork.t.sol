@@ -27,6 +27,7 @@ contract AscendV5LauncherForkTest is ForkBase {
     address internal constant BURN_SINK = 0x9F0b0e3B362937b07Cd1E869b50687961e0c7741;
     address internal constant WHYPE = 0xbA876237B0F021A6c6D852d6c26E107997cC5E81;
     address internal constant USDC = 0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65;
+    address internal constant KNTQ = 0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0;
     // a live Vanilla coin whose escrow pays a wallet
     address internal constant COIN_3 = 0x086f8850FBC3101c4Bdc6932c3D5f639cb34D2DF;
 
@@ -164,6 +165,19 @@ contract AscendV5LauncherForkTest is ForkBase {
         }
     }
 
+    /// @dev The site takes fees with up to two decimals (1.00% to 10.00%), so steps of 100 pips.
+    function test_feesWithTwoDecimals() public {
+        uint24[4] memory fees = [uint24(10_100), 12_300, 25_500, 99_900];
+        for (uint256 i; i < fees.length; ++i) {
+            AscendV5Launcher.Coin memory c = _coin(fees[i], 0);
+            c.salt = bytes32(100 + i);
+            (, bytes32 poolId, Lodestar l) = _launch(c, 0, "");
+            assertEq(IAscendV5Launchpad(LAUNCHPAD).currentFee(poolId), fees[i]);
+            assertEq(source.swapCostBps(address(0), poolId), fees[i] / 100);
+            assertTrue(l.isCreator());
+        }
+    }
+
     function test_usdcPair() public {
         AscendV5Launcher.Coin memory c = _coin(30_000, 0);
         c.quote = USDC;
@@ -171,6 +185,52 @@ contract AscendV5LauncherForkTest is ForkBase {
         assertTrue(l.isCreator());
         assertEq(_escrow(poolId).quote(), USDC);
         assertEq(factory.lodestarOf(token), address(l));
+    }
+
+    /// @dev A coin paired with an ERC-20 other than WHYPE: its fees, in that token, reach lockers and the Team
+    /// Treasury, and the buyback spends it on the coin through the coin's own pool and burns what it buys.
+    function _routesQuote(address quote, uint256 big, uint256 small) internal {
+        AscendV5Launcher.Coin memory c = _coin(30_000, 0);
+        c.quote = quote;
+        c.salt = keccak256(abi.encode(quote));
+        (address token, bytes32 poolId, Lodestar l) = _launch(c, 0, "");
+        deal(quote, trader, big * 20 + small * 40);
+        vm.prank(trader);
+        IERC20(quote).approve(address(v5swapper), type(uint256).max);
+        for (uint256 i; i < 10; ++i) {
+            vm.prank(trader);
+            v5swapper.buyExactIn(poolId, big, 0, locker);
+            skip(6 minutes);
+        }
+        uint256 lockId = _lock(token, l.exilePoolId(), IERC20(token).balanceOf(locker));
+        uint256 exileBefore = IERC20(quote).balanceOf(address(exile));
+        uint256 sinkBefore = IERC20(token).balanceOf(BURN_SINK);
+        l.distribute{gas: 3_000_000}();
+        assertGt(l.totalHoldersQuote(), 0, "lockers were paid in the quote");
+        assertGt(l.totalTreasuryQuote(), 0, "the Team Treasury stream was paid in the quote");
+        assertEq(IERC20(quote).balanceOf(address(exile)) - exileBefore, l.totalHoldersQuote(), "Exile holds the lockers' share");
+        // Ascend's EMA trails spot after the big buys; small trades over the next two hours let it catch up
+        for (uint256 i; i < 20; ++i) {
+            skip(6 minutes);
+            vm.prank(trader);
+            v5swapper.buyExactIn(poolId, small, 0, trader);
+        }
+        l.distribute{gas: 3_000_000}();
+        assertGt(l.totalBuybackTokensBurned(), 0, "bought back through the coin's pool");
+        assertEq(IERC20(token).balanceOf(BURN_SINK) - sinkBefore, l.totalBuybackTokensBurned(), "and burned");
+        skip(3 days);
+        uint256 lockerBefore = IERC20(quote).balanceOf(locker);
+        vm.prank(locker);
+        exile.claimRewards(lockId);
+        assertGt(IERC20(quote).balanceOf(locker) - lockerBefore, 0, "the locker claimed rewards in the quote");
+    }
+
+    function test_usdcPairRoutesFees() public {
+        _routesQuote(USDC, 2_000e6, 10e6);
+    }
+
+    function test_kntqPairRoutesFees() public {
+        _routesQuote(KNTQ, 2_000e18, 10e18);
     }
 
     function test_devBuyInNativeHype() public {

@@ -2,7 +2,7 @@ import { concat, encodeAbiParameters, getContractAddress, keccak256, type Addres
 
 /** The launchpads on Elysium mainnet Monarchy routes for, in the order the site lists them, left to right: Ascend
  * first. The forge scripts number them in the same order (LaunchpadsBase.s.sol). */
-export const PAD_KEYS = ["ascend", "volta", "elyspump", "boxa", "kleos", "montra"] as const;
+export const PAD_KEYS = ["ascend", "volta", "montra", "elyspump", "boxa", "kleos"] as const;
 export type PadKey = (typeof PAD_KEYS)[number];
 
 export type QuoteInfo = { address: Address; symbol: string };
@@ -44,10 +44,10 @@ export const ASCEND_QUOTES: QuoteInfo[] = [
 export const PADS: Record<PadKey, PadInfo> = {
   ascend: { key: "ascend", name: "Ascend", site: "https://ascendlaunch.xyz", twoStep: true, delayed: true, quotes: ASCEND_QUOTES },
   volta: { key: "volta", name: "Volta", site: "https://www.volta.family", twoStep: false },
+  montra: { key: "montra", name: "Montra", site: "https://montramarkets.xyz", twoStep: false },
   elyspump: { key: "elyspump", name: "ElysPump", site: "https://elysp.com", twoStep: false },
   boxa: { key: "boxa", name: "Boxa", site: "https://boxa.club", twoStep: true },
   kleos: { key: "kleos", name: "Kleos", site: "https://thekleos.xyz", twoStep: false },
-  montra: { key: "montra", name: "Montra", site: "https://montramarkets.xyz", twoStep: false },
 };
 
 /** "Ascend, Volta, ElysPump, Boxa, Kleos or Montra", for the pads a deployment has. */

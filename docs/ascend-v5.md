@@ -17,6 +17,8 @@ and the chain on November 5, 2026.
 ## What changed from the testnet launchpad
 
 - **Fees.** The creator picks a fee from 1% to 10% at launch, fixed for life, plus up to 1% for an approved builder.
+  Ascend takes it in pips (10,000 = 1%) and accepts any value in that range; Monarchy's launch form takes up to two
+  decimals (2.55%, say).
   Everything above 1% goes to the creator side. Fees are paid in the quote asset only: there is no token-side fee,
   so a v5 router's token-side route stays idle.
 - **Held fees.** Below a $40k moving-average market cap only 10% of the fee is paid out as trades happen; the rest is
@@ -143,7 +145,7 @@ Buybacks go through `AscendV5Swapper`, which rebuilds the pool key from the pool
 through the launch pool, coins straight to Ascend's BurnSink (v5 coins refuse `0x…dEaD`). The swap cost the floor
 allows for is the pool's own `currentFee`. Lodestar now tries buybacks on pools costing up to 11% (it was 5%), so
 every v5 fee level, builder fee included, gets its buyback. The limit is shared by every launchpad, so Volta,
-ElysPump, Boxa, Kleos and Montra buybacks also go through at a buy fee of up to 11%. Ascend's EMA only moves on swaps, so after a sharp move
+Montra, ElysPump, Boxa and Kleos buybacks also go through at a buy fee of up to 11%. Ascend's EMA only moves on swaps, so after a sharp move
 the floor skips buybacks until trading brings the average back in line.
 
 ## Tests
@@ -156,9 +158,10 @@ ELYSIUM_RPC_URL=https://rpc-live.boxa.club forge test --match-contract AscendV5F
 ```
 
 `contracts/test/fork/AscendV5LauncherFork.t.sol` launches real coins through `AscendV5Launcher` on the same fork: at
-every fee level, against WHYPE and USDC, with the first buy in WHYPE or HYPE and with a launch statement. It checks
-the escrow pays the router from the start with nothing pending and takeovers off, that fees reach lockers and the
-treasury from the first trades, that a copied launch gets another coin, that the factory takes `deployLaunched`
+every fee level and at fees with two decimals, against WHYPE and USDC, with the first buy in WHYPE or HYPE and with a
+launch statement. It checks the escrow pays the router from the start with nothing pending and takeovers off, that
+fees reach lockers and the treasury from the first trades, that USDC- and KNTQ-paired coins route end to end
+(lockers and the Team Treasury paid in that token, a buyback through the coin's pool burned, a locker's claim paid), that a copied launch gets another coin, that the factory takes `deployLaunched`
 only from its launcher and never for a coin whose escrow pays someone else, and the profile rules: only the
 steward can change it, Ascend's 500 byte description and 200 byte links fit and one byte more doesn't, and a coin
 may have no picture.
@@ -167,7 +170,7 @@ may have no picture.
 ## Deploying and running it
 
 Ascend v5 is the first launchpad in the mainnet scripts (`LAUNCHPAD=ascend`), so it shares the multisig owner,
-Exile, Sandfall and the Lodestar implementation with Volta, ElysPump, Boxa, Kleos and Montra (docs/launchpads.md):
+Exile, Sandfall and the Lodestar implementation with Volta, Montra, ElysPump, Boxa and Kleos (docs/launchpads.md):
 
 - `DeployLaunchpads` deploys `AscendV5FeeSource`, an `AscendV5Swapper`, a factory and an `AscendV5Launcher`, and
   records them under `launchpads.ascend` in `deployments/launchpads/99901.json`. The factory never needs to be an
@@ -205,10 +208,10 @@ Ascend waits:
 | Ascend, launched through Monarchy | the router is the fee wallet from the first trade | none |
 | Ascend, launched on Ascend | propose on the escrow, activate, accept | 48 hours, in Ascend's escrow |
 | Volta | activate (the router is created), then the creator sends it the coin's creator NFT; coins with a creator share of 0 can't be activated | none |
+| Montra | activate (the router is created), claim what the pool holds for you, then make the router the coin's fee recipient (`updateRecipient`); coins that pay their holders can't be activated | none |
 | ElysPump | activate (the router is created), then the fee receiver makes it the coin's fee receiver (`setFeeReceiver`); coins with a receiver share of 0 can't be activated | none |
 | Boxa | the creator proposes the router, then activating creates it and accepts in the same transaction | none |
 | Kleos | activate (the router is created), then the creator sends it the role | none |
-| Montra | activate (the router is created), claim what the pool holds for you, then make the router the coin's fee recipient (`updateRecipient`); coins that pay their holders can't be activated | none |
 
 ## Not done yet
 

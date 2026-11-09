@@ -152,19 +152,20 @@ contract VoltaForkTest is ForkBase {
         assertEq(dev.balance - before, devOwed);
     }
 
-    /// @dev The hook distributes a pool's fees once they reach 0.01 HYPE, so up to that much waits for the next
-    /// trade; and buys first take coins the hook collected as fees (its internal swap pool), which turns earlier
-    /// coin-side fees into HYPE for the NFT's holder. Hence the loose bounds.
+    /// @dev The router gets at least what these buys paid the creator side, less up to 0.01 HYPE the hook holds
+    /// until a pool's fees reach that much. It can get more: buys first take coins the hook collected as fees (its
+    /// internal swap pool), which turns coin-side fees from trades before the handover into HYPE for whoever holds
+    /// the NFT then, by however much real trading left there at the forked block. So only a floor is fixed here.
     function test_claimAndDistribute() public {
         (, uint256 routed) = _claimAndDistribute(ETF);
         // 5 HYPE of buys at 3%: 30% to the protocol, all of the rest to the creator
-        assertApproxEqRel(routed, 0.105 ether, 0.3e18);
+        assertGe(routed + 0.01 ether, 0.105 ether);
     }
 
     function test_mixedSplit_claimAndDistribute() public {
         (, uint256 routed) = _claimAndDistribute(VOID);
         // the creator's half of the creator side: 5 HYPE * 1% * 70% * 50%
-        assertApproxEqRel(routed, 0.0175 ether, 0.3e18);
+        assertGe(routed + 0.01 ether, 0.0175 ether);
     }
 
     function test_buybackThroughVoltasPool() public {

@@ -24,7 +24,7 @@ export function ExilePage() {
   usePageTitle("Exile");
   const d = useDeployment();
   const core = useLodestarCore();
-  // a chain with no featured token (Elysium mainnet, where the coins are on Ascend, Volta, ElysPump, Boxa, Kleos and Montra) opens on "Lock a coin"
+  // a chain with no featured token (Elysium mainnet, where the coins are on Ascend, Volta, Montra, ElysPump, Boxa and Kleos) opens on "Lock a coin"
   const featured = isSet(d?.lodestar);
   const [mode, setMode] = useState<"main" | "else">(featured ? "main" : "else");
   const poolId = core.exilePoolId;
@@ -81,7 +81,7 @@ export function ExilePage() {
       >
         <div key={mode} className="swap-in">
           {mode === "main" ? (
-            <LockForm exile={d.exile} token={core.token} tokenMeta={core.tokenMeta} poolId={poolId} tiers={tiers} tiersLoading={tiersLoading} rates={pool.data} rewardMeta={rewardMeta} />
+            <LockForm exile={d.exile} token={core.token} tokenMeta={core.tokenMeta} poolId={poolId} tiers={tiers} tiersLoading={tiersLoading} rates={pool.data} rewardMeta={rewardMeta} canOptOut />
           ) : (
             <SomethingElse exile={d.exile} />
           )}
@@ -131,6 +131,7 @@ function LockForm({
   tiersLoading,
   rates,
   rewardMeta,
+  canOptOut,
 }: {
   exile: Address;
   token?: Address;
@@ -141,14 +142,18 @@ function LockForm({
   /** The pool's live points and drip rates, for the earnings estimate. */
   rates?: Rates;
   rewardMeta?: TokenMeta;
+  /** The token has a reward pool and no dividend harvest, so a lock may stay out of the pool (a plain lock). */
+  canOptOut?: boolean;
 }) {
   const { address } = useConnection();
   const [amount, setAmount] = useState("");
+  // a holder who doesn't want rewards (a team's own supply, say) locks outside the pool, so lockers get it all
+  const [optOut, setOptOut] = useState(false);
   const [seconds, setSeconds] = useState(30 * 86400);
   const drip = useDripDays();
   // While the pool is loading (or its read failed) the lock still belongs in it: wait rather than fall back
   // to poolId 0, which would make a permanent lock that never earns.
-  const rewards = !!poolId || tiersLoading;
+  const rewards = (!!poolId || tiersLoading) && !(canOptOut && optOut);
   const meta = useReadContracts({
     allowFailure: false,
     contracts: [
@@ -166,10 +171,19 @@ function LockForm({
   const overBalance = balance !== undefined && value > (balance as bigint);
   const points = tier ? (value * BigInt(tier.multiplierBps)) / 10_000n : 0n;
   const earns = rates && rewards ? estimate(rates, points, unlockAt - Math.floor(Date.now() / 1000)) : undefined;
-  const reason = !token ? "Enter the token or LP address" : tiersLoading ? "Loading reward tiers" : value === 0n ? "Enter an amount" : overBalance ? "More than your balance" : undefined;
+  const reason = !token ? "Enter the token or LP address" : tiersLoading && rewards ? "Loading reward tiers" : value === 0n ? "Enter an amount" : overBalance ? "More than your balance" : undefined;
 
   return (
     <>
+      {canOptOut && (
+        <label className="check opt-out">
+          <input type="checkbox" checked={optOut} onChange={(e) => setOptOut(e.target.checked)} />
+          <span>
+            <b className="text">Lock without rewards.</b> The coins stay locked until the unlock date and show in the Garden like any lock, but
+            they earn nothing, so every reward goes to the other lockers. A lock can't join the reward pool later.
+          </span>
+        </label>
+      )}
       {rewards && tiersLoading && (
         <div className="tiers pick" aria-busy="true">
           {[0, 1, 2, 3].map((i) => (
@@ -215,7 +229,7 @@ function LockForm({
               k="Tier"
               v={
                 !rewards ? (
-                  <Badge tone="grey">No rewards for this token</Badge>
+                  <Badge tone="grey">{canOptOut && optOut ? "No rewards, by choice" : "No rewards for this token"}</Badge>
                 ) : tiersLoading ? (
                   <Skel w="8em" />
                 ) : tier ? (
@@ -344,7 +358,7 @@ function SomethingElse({ exile }: { exile: Address }) {
           </p>
           {token && !checking && (
             <div style={{ marginTop: 16 }}>
-              <LockForm key={token} exile={exile} token={token} poolId={rewarded ? poolId : 0n} tiers={rewarded ? tiers : []} tiersLoading={rewarded && (!poolId || !pool.data)} />
+              <LockForm key={token} exile={exile} token={token} poolId={rewarded ? poolId : 0n} tiers={rewarded ? tiers : []} tiersLoading={rewarded && (!poolId || !pool.data)} canOptOut={!!router} />
             </div>
           )}
         </>

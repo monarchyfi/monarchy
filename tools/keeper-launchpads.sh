@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The keeper for Monarchy on Ascend v5, Volta, ElysPump, Boxa, Kleos and Montra (Elysium mainnet), as
+# The keeper for Monarchy on Ascend v5, Volta, Montra, ElysPump, Boxa and Kleos (Elysium mainnet), as
 # .github/workflows/distribute.yml runs it every 3 hours. tools/keeper-distribute.sh stays the keeper for the one
 # Ascend router on the testnet.
 #

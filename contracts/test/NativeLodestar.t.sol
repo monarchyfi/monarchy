@@ -19,7 +19,7 @@ import {
     MockDividendHook
 } from "./utils/NativeMocks.sol";
 
-/// @notice Lodestar on a launchpad shaped like Volta, ElysPump, Boxa, Kleos and Montra: fees in native HYPE, one-step or two-step
+/// @notice Lodestar on a launchpad shaped like Volta, Montra, ElysPump, Boxa and Kleos: fees in native HYPE, one-step or two-step
 /// handover, coins that pay holders dividends. The real launchpads are covered by the fork tests.
 contract NativeLodestarTest is Test {
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;

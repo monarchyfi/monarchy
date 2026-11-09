@@ -14,7 +14,7 @@ import {ILodestar} from "./interfaces/ILodestar.sol";
 import {ILodestarFactory} from "./interfaces/ILodestarFactory.sol";
 
 /// @title Lodestar
-/// @notice Fee router for one launchpad token (Ascend, Volta, ElysPump, Boxa, Kleos or Montra). Once it holds the
+/// @notice Fee router for one launchpad token (Ascend, Volta, Montra, ElysPump, Boxa or Kleos). Once it holds the
 /// token's creator role on the launchpad, every creator fee lands here, and anyone can call `distribute()` to
 /// route it:
 ///   - project-token fees are burned, or, if the creator chose so, paid in full to Exile lockers;
@@ -67,7 +67,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// @notice The launchpad's fee-source adapter: views and the calls this router sends as the creator.
     IFeeSource public source;
     /// @notice The contract that holds the creator role (Ascend's testnet launchpad, an Ascend v5 pool's escrow,
-    /// Volta's creator NFT, an ElysPump, Boxa, Kleos or Montra hook). With `payer`, the only address this router
+    /// Volta's creator NFT, a Montra, ElysPump, Boxa or Kleos hook). With `payer`, the only address this router
     /// sends launchpad calls to.
     address public hook;
     /// @notice The contract that pays the role's fees when it isn't `hook` (Volta's fee escrow), else address(0).
@@ -232,7 +232,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit CreatorAccepted();
     }
 
-    /// @notice Fees on Volta, ElysPump, Boxa, Kleos and Montra arrive in native HYPE. Plain accept, no logic, so a payout landing in
+    /// @notice Fees on Volta, Montra, ElysPump, Boxa and Kleos arrive in native HYPE. Plain accept, no logic, so a payout landing in
     /// the middle of `distribute` can't re-enter anything. Routers quoted in an ERC-20 refuse HYPE, which they
     /// could never route.
     receive() external payable {
@@ -530,7 +530,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     }
 
     /// @notice Hand the creator role to `next`: proposed on two-step launchpads (Ascend, Boxa), where `next`
-    /// accepts, and moved at once on one-step launchpads (Volta, ElysPump, Kleos, Montra). Blocked while locked;
+    /// accepts, and moved at once on one-step launchpads (Volta, Montra, ElysPump, Kleos). Blocked while locked;
     /// `next = 0` cancels a pending hand-off and is always allowed.
     function transferCreatorOut(address next) external onlySteward {
         if (next != address(0) && block.timestamp < creatorLockedUntil) revert CreatorRoleIsLocked();

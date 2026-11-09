@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dress rehearsal of the Volta, ElysPump, Boxa, Kleos and Montra rollout on a local anvil fork of Elysium mainnet.
+# Dress rehearsal of the Volta, Montra, ElysPump, Boxa and Kleos rollout on a local anvil fork of Elysium mainnet.
 # Sends nothing to the real chain: anvil forks it into a local node and every transaction goes there. (Ascend v5
 # has its own rehearsal in its fork tests: its 48 hour wait and escrow don't fit this script's one pass.)
 #
@@ -7,8 +7,8 @@
 #
 # 1. DeployLaunchpads with anvil's first key, an anvil EOA standing in for the multisig (ALLOW_EOA_OWNER=true).
 # 2. Twelve hours later FinishLaunchpads, and the stand-in multisig accepts Exile.
-# 3. One coin per launchpad: ETF (Volta), MIX (ElysPump v2 hook), CHUD (Boxa pairs hook), BULL (Kleos hook A) and
-#    ELYSA (Montra). MIX, CHUD and BULL pay their holders dividends, so Exile's harvest runs for them; Volta pays
+# 3. One coin per launchpad: ETF (Volta), ELYSA (Montra), MIX (ElysPump v2 hook), CHUD (Boxa pairs hook) and
+#    BULL (Kleos hook A). MIX, CHUD and BULL pay their holders dividends, so Exile's harvest runs for them; Volta pays
 #    holders to wallets only and Montra's coin pays its creator side to one recipient, so those two have no
 #    harvest. Each coin's creator role is moved (impersonated) to an anvil key, which then runs ActivateLaunchpad
 #    as the creator would (on Montra that claims the fees the role brought with it first). The Kleos router gets
@@ -139,7 +139,7 @@ buy() {
 ROUTERS=()
 # the Kleos router buys back through the deployment's V4Swapper (phase 2); the others keep the buyback share in
 # reserve (phase 1)
-for spec in "volta $ETF none" "elyspump $MIX none" "boxa $CHUD none" "kleos $BULL v4" "montra $ELYSA none"; do
+for spec in "volta $ETF none" "montra $ELYSA none" "elyspump $MIX none" "boxa $CHUD none" "kleos $BULL v4"; do
   read -r pad coin swap <<<"$spec"
   echo "== 3. $pad: activate $coin"
   take_role "$pad" "$coin"

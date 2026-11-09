@@ -15,8 +15,8 @@ interface IHasPoolManager {
 }
 
 /// @title V4FeeSource
-/// @notice Shared base for the adapters of launchpads built as Uniswap v4 hooks on Elysium (Volta, ElysPump, Boxa,
-/// Kleos, Montra).
+/// @notice Shared base for the adapters of launchpads built as Uniswap v4 hooks on Elysium (Volta, Montra, ElysPump,
+/// Boxa, Kleos).
 /// Every coin there trades in one pool, native HYPE against the coin, so this base only supports pools whose
 /// currency0 is native HYPE and whose currency1 is the coin; fees arrive as native HYPE.
 ///

@@ -2,14 +2,14 @@
 pragma solidity ^0.8.24;
 
 /// @notice What a Lodestar needs to know about the launchpad that holds its token's creator role. One adapter
-/// per launchpad (Ascend, Volta, ElysPump, Boxa, Kleos, Montra) answers views and builds the calls the router
+/// per launchpad (Ascend, Volta, Montra, ElysPump, Boxa, Kleos) answers views and builds the calls the router
 /// sends itself, since a launchpad only answers the address that holds the creator role. A router stores its
 /// adapter once, at initialize, and only ever sends a call to the pool's `hook` (the contract that holds the role)
 /// or to the launchpad's `payer` (the contract that pays the role's fees, where that is another one), never with
 /// value, so an adapter cannot turn a router into a generic caller.
 interface IFeeSource {
     /// @dev TwoStep: the creator proposes the router and the router accepts (Ascend testnet, Boxa). OneStep: the
-    /// creator hands the role over in one call and there is nothing to accept (Volta, ElysPump, Kleos, Montra).
+    /// creator hands the role over in one call and there is nothing to accept (Volta, Montra, ElysPump, Kleos).
     /// TwoStepDelayed: like TwoStep, but the router can only accept after a wait (Ascend v5, 48 hours), so the
     /// factory deploys the router without accepting and anyone calls `Lodestar.acceptCreator()` once the wait is
     /// over.

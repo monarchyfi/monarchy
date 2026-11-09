@@ -32,7 +32,14 @@ const MAX_NAME = 40;
 const MAX_SYMBOL = 32;
 /** The button's words while a picture is being uploaded, as on Ascend. */
 const UPLOAD_STEP = { signing: "Sign to publish your image…", uploading: "Saving artwork…" } as const;
-const FEES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+/** A trading fee typed in percent, 1 to 10 with at most two decimals, in Ascend's pips (10_000 = 1%); undefined when it
+ * isn't one. Read from the text, not through a float, so 2.55 is exactly 25_500. */
+export function feePips(text: string): number | undefined {
+  const m = /^(\d{1,2})(?:\.(\d{1,2}))?$/.exec(text.trim());
+  if (!m) return undefined;
+  const pips = Number(m[1]) * 10_000 + Number((m[2] ?? "").padEnd(2, "0")) * 100;
+  return pips >= 10_000 && pips <= 100_000 ? pips : undefined;
+}
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -94,7 +101,7 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [quoteIdx, setQuoteIdx] = useState("0");
-  const [fee, setFee] = useState(3);
+  const [fee, setFee] = useState("3");
   const [devBuy, setDevBuy] = useState("");
   const [image, setImage] = useState<CoinImage>();
   const upload = useImageUpload();
@@ -123,9 +130,10 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
     badAmount = true;
   }
 
-  const coin = { name: name.trim(), symbol: symbol.trim(), quote, fee: fee * 10_000, devBuyQuote: devBuyWei, minDevOut: 0n, salt } as const;
+  const pips = feePips(fee);
+  const coin = { name: name.trim(), symbol: symbol.trim(), quote, fee: pips ?? 0, devBuyQuote: devBuyWei, minDevOut: 0n, salt } as const;
   const profile = { image: "", description: description.trim(), website: website.trim(), twitter: twitter.trim(), telegram: telegram.trim() };
-  const ready = !!coin.name && !!coin.symbol && !badAmount;
+  const ready = !!coin.name && !!coin.symbol && !badAmount && pips !== undefined;
   const predicted = useReadContract({
     address: launcher,
     abi: ascendV5LauncherAbi,
@@ -152,7 +160,9 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
       ? "Give it a ticker"
       : coin.name.length > MAX_NAME || coin.symbol.length > MAX_SYMBOL
         ? `Keep the name to ${MAX_NAME} characters and the ticker to ${MAX_SYMBOL}`
-        : badAmount
+        : pips === undefined
+          ? "Set a trading fee from 1% to 10%, with at most two decimals"
+          : badAmount
           ? "That first-buy amount isn't a number"
           : balance !== undefined && devBuyWei > balance
             ? `You don't have ${devBuy} ${shown}`
@@ -212,22 +222,24 @@ export function AscendLaunch({ pads, pad, onLaunched }: { pads: LaunchpadsDeploy
       </div>
       <div className="form">
         <label className="field">
-          <span className="field-label">Trading fee</span>
-          <select className="input" value={fee} onChange={(e) => setFee(Number(e.target.value))}>
-            {FEES.map((f) => (
-              <option key={f} value={f}>
-                {f}%
-              </option>
-            ))}
-          </select>
+          <span className="field-label">Trading fee (%)</span>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={fee}
+            onChange={(e) => setFee(e.target.value.replace(",", ".").replace(/[^\d.]/g, ""))}
+            placeholder="3"
+            aria-invalid={pips === undefined}
+          />
         </label>
         <label className="field">
           <span className="field-label">First buy ({shown}, optional)</span>
           <input className="input" inputMode="decimal" value={devBuy} onChange={(e) => setDevBuy(e.target.value)} placeholder="0" />
         </label>
       </div>
+      {pips === undefined && <p className="warn small field-help">The trading fee has to be from 1% to 10%, with at most two decimals.</p>}
       <p className="muted small field-help">
-        The fee is fixed at launch. Everything above Ascend's base 1% is the creator's share, which the router splits. The first buy goes to
+        The trading fee is 1% to 10%, with up to two decimals (2.5 or 3.75, say), and fixed at launch. Everything above Ascend's base 1% is the creator's share, which the router splits. The first buy goes to
         your wallet and pays no fee{balance !== undefined ? <> (you have {fmt(balance, qd)} {shown})</> : null}.
       </p>
 
