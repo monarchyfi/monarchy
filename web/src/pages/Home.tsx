@@ -14,7 +14,7 @@ export function Home() {
       <p className="tagline">Steal the Crown</p>
       <p className="landing-sub">Lock to earn. The kingdom shares everything with those who stay.</p>
       <div className="landing-links">
-        <span className="landing-note">Locks, vesting and rewards for lockers. No fees.</span>
+        <span className="landing-note">Built on Ascend. Locks, vesting and rewards for lockers. No fees.</span>
         <span className="landing-out">
           <a href="https://docs.monarchy.fi" target="_blank" rel="noreferrer">
             Docs <span aria-hidden="true">↗</span>

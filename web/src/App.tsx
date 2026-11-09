@@ -185,7 +185,7 @@ export function App() {
           <div className="foot-brand">
             <span>MONARCHY</span>
             <span className="foot-sep" aria-hidden="true" />
-            <span>Locks, vesting and rewards for lockers. No fees.</span>
+            <span>Built on Ascend. Locks, vesting and rewards for lockers. No fees.</span>
           </div>
           <div className="foot-links">
             <a href="https://x.com/monarchyfi" target="_blank" rel="noreferrer">
