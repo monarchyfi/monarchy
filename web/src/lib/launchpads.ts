@@ -1,7 +1,8 @@
 import { concat, encodeAbiParameters, getContractAddress, keccak256, type Address, type Hex } from "viem";
 
-/** The launchpads on Elysium mainnet Monarchy routes for. The order is the one the forge scripts use. */
-export const PAD_KEYS = ["eleos", "kleos", "boxa", "ascend", "elyspump"] as const;
+/** The launchpads on Elysium mainnet Monarchy routes for, in the order the site lists them: Ascend first. (The forge
+ * scripts number them differently, by key, so this order is the site's alone.) */
+export const PAD_KEYS = ["ascend", "eleos", "kleos", "boxa", "elyspump"] as const;
 export type PadKey = (typeof PAD_KEYS)[number];
 
 export type QuoteInfo = { address: Address; symbol: string };
@@ -48,7 +49,7 @@ export const PADS: Record<PadKey, PadInfo> = {
   elyspump: { key: "elyspump", name: "ElysPump", site: "https://elysp.com", twoStep: false },
 };
 
-/** "Eleos, Kleos, Boxa, Ascend or ElysPump", for the pads a deployment has. */
+/** "Ascend, Eleos, Kleos, Boxa or ElysPump", for the pads a deployment has. */
 export function padNames(list: { info: PadInfo }[], last = "or"): string {
   const names = list.map(({ info }) => info.name);
   return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} ${last} ${names[names.length - 1]}`;

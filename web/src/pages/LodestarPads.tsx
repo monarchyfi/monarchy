@@ -25,7 +25,6 @@ import { date, duration, fmt, pct } from "../lib/format";
 import { POLL, useNow, usePageTitle } from "../lib/hooks";
 import {
   ascendPoolId,
-  padNames,
   padsOf,
   PADS,
   routerAddress,
@@ -43,18 +42,17 @@ import { AscendLaunch, CoinProfileCard, TwoWays } from "./AscendLaunch";
 /** IFeeSource.Handover.OneStep */
 const ONE_STEP = 1;
 
-type Choice = "auto" | PadKey;
-
-/** The Lodestar page on a chain with Eleos, Kleos, Boxa, Ascend v5 and ElysPump: paste a coin, the page finds its launchpad (or
- * the creator picks it), then shows its router or the activation steps that launchpad needs. */
+/** The Lodestar page on a chain with Ascend v5, Eleos, Kleos, Boxa and ElysPump: the creator picks the launchpad and
+ * pastes a coin, the page checks the coin really is on that launchpad, then shows its router or the activation steps
+ * that launchpad needs. */
 export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
   usePageTitle("Lodestar");
   const [params] = useSearchParams();
   const [input, setInput] = useState(() => params.get("token") ?? "");
-  const fromUrl = params.get("launchpad") as PadKey | null;
-  const [choice, setChoice] = useState<Choice>(() => (fromUrl && fromUrl in PADS ? fromUrl : "auto"));
+  const fromUrl = params.get("launchpad");
   const list = padsOf(pads);
-  const names = padNames(list);
+  // Ascend first and picked to start with; ?launchpad= picks another
+  const [choice, setChoice] = useState<PadKey>(() => list.find(({ info }) => info.key === fromUrl)?.info.key ?? list[0]?.info.key ?? "ascend");
   const ascend = list.find(({ info }) => info.key === "ascend")?.pad;
   const canLaunch = !!ascend && isSet(ascend.launcher);
   const [mode, setMode] = useState<"activate" | "launch">(() => (params.get("launch") && canLaunch ? "launch" : "activate"));
@@ -68,8 +66,8 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
           Lodestar
         </h1>
         <p className="muted">
-          Your coin's creator fees, paid to the holders who lock it. A Lodestar holds your coin's creator role on {names} and routes your
-          creator fees the way you set it: to Exile lockers, into buyback and burn, or to a Team Treasury streamed through Sandfall. Locked
+          Your coin's creator fees, paid to the holders who lock it. A Lodestar holds your coin's creator role on Ascend and other
+          supported launchpads and routes your creator fees the way you set it: to Exile lockers, into buyback and burn, or to a Team Treasury streamed through Sandfall. Locked
           coins keep earning the coin's own holder dividends too. Later changes wait 12 hours, in public. No fees.
         </p>
         {canLaunch && (
@@ -83,7 +81,7 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
           />
         )}
       </header>
-      {ascend && (mode === "launch" || choice === "ascend") && <TwoWays launchable={canLaunch} />}
+      {ascend && mode === "launch" && <TwoWays launchable={canLaunch} />}
       {mode === "launch" && ascend && canLaunch ? (
         <AscendLaunch
           pads={pads}
@@ -97,28 +95,23 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
       ) : (
         <>
           <Card title="Coin">
+            <div className="field">
+              <span className="field-label">Launchpad</span>
+              <Switch options={list.map(({ info }) => ({ key: info.key, label: info.name }))} value={choice} onChange={(k) => setChoice(k as PadKey)} />
+            </div>
+            <p className="muted small field-help">Pick the launchpad your coin was launched on. The page checks that the coin really is there before it shows anything.</p>
             <label className="field">
               <span className="field-label">Coin address</span>
               <input className="input mono-input" placeholder="0x…" value={input} onChange={(e) => setInput(e.target.value.trim())} spellCheck={false} autoComplete="off" />
             </label>
             <p className="muted small field-help">
-              {badInput ? "That isn't a valid address yet." : `Paste a coin launched on ${names} to view or activate its Lodestar.`}
-            </p>
-            <div className="field">
-              <span className="field-label">Launchpad</span>
-              <Switch
-                options={[{ key: "auto", label: "Find it" }, ...list.map(({ info }) => ({ key: info.key, label: info.name }))]}
-                value={choice}
-                onChange={(k) => setChoice(k as Choice)}
-              />
-            </div>
-            <p className="muted small field-help">
-              {choice === "auto"
-                ? "The page asks each launchpad whether it knows the coin. Pick one yourself if you'd rather."
-                : `Looking for the coin on ${PADS[choice].name} only.`}
+              {badInput ? "That isn't a valid address yet." : `Paste a coin launched on ${PADS[choice].name} to view or activate its Lodestar.`}
             </p>
           </Card>
-          {token ? <PadToken key={token} pads={pads} token={token} choice={choice} /> : <HandoverTable list={list} canLaunch={canLaunch} />}
+          {token && <PadToken key={token} pads={pads} token={token} choice={choice} onSwitch={setChoice} />}
+          {/* Ascend's two ways on, with its 48 hour wait explained, whenever Ascend is the pick */}
+          {ascend && choice === "ascend" && <TwoWays launchable={canLaunch} />}
+          {!token && <HandoverTable list={list} canLaunch={canLaunch} />}
         </>
       )}
     </div>
@@ -223,7 +216,7 @@ function probesOf(list: { info: PadInfo }[]): Probe[] {
   );
 }
 
-function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: Address; choice: Choice }) {
+function PadToken({ pads, token, choice, onSwitch }: { pads: LaunchpadsDeployment; token: Address; choice: PadKey; onSwitch: (k: PadKey) => void }) {
   const list = padsOf(pads);
   const probes = probesOf(list);
   const r = useReadContracts({
@@ -267,33 +260,47 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
       </Card>
     );
 
-  const hit = found.find((f) => f.router) ?? found.find((f) => f.predicted);
-  const target = choice === "auto" ? hit : found.find((f) => f.info.key === choice);
-  if (!target) {
-    const quoted = found.find((f) => f.onHook);
-    if (quoted?.noReceiverShare) return <NoReceiverShare name={quoted.info.name} />;
+  const target = found.find((f) => f.info.key === choice);
+  if (!target) return <LoadingCard />;
+  const name = target.info.name;
+  // where else the coin is, so a wrong pick says which launchpad is the right one
+  const elsewhere = found.find((f) => f !== target && (f.router || f.predicted || f.onHook));
+  const onTarget = !!(target.router || target.predicted);
+  if (!onTarget) {
+    if (target.noReceiverShare)
+      return (
+        <>
+          <PadCheck name={name} />
+          <NoReceiverShare name={name} />
+        </>
+      );
+    if (target.onHook)
+      return (
+        <>
+          <PadCheck name={name} />
+          <Card>
+            <Empty title={`On ${name}, but not paired with HYPE`}>
+              This coin trades through one of {name}'s hooks against something other than native HYPE. Monarchy routes HYPE-paired coins
+              only there.
+            </Empty>
+          </Card>
+        </>
+      );
     return (
       <Card>
-        <Empty title={quoted ? `On ${quoted.info.name}, but not paired with HYPE` : `Not found on ${padNames(list)}`}>
-          {quoted
-            ? `This coin trades through one of ${quoted.info.name}'s hooks against something other than native HYPE. Monarchy routes HYPE-paired coins only there.`
-            : "None of the launchpads knows this coin. Check the address, or pick the launchpad yourself above. A coin on a brand-new hook generation shows up once Monarchy adds it."}
-        </Empty>
-      </Card>
-    );
-  }
-  if (!target.router && !target.predicted) {
-    if (target.noReceiverShare) return <NoReceiverShare name={target.info.name} />;
-    return (
-      <Card>
-        <Empty title={`${target.info.name} doesn't know this coin`}>
-          {target.onHook
-            ? `It trades on ${target.info.name} against something other than native HYPE, which Monarchy doesn't route.`
-            : hit
-              ? `It's on ${hit.info.name}. Switch the launchpad above, or go back to "Find it".`
-              : target.info.quotes
-                ? `It has no ${target.info.name} launch pool against ${target.info.quotes.map((q) => q.symbol).join(", ")}. Check the address.`
-                : `It isn't on any ${target.info.name} hook Monarchy knows. Check the address.`}
+        <Empty title={`Wrong launchpad: this coin isn't on ${name}`}>
+          {elsewhere ? (
+            <>
+              It was launched on <b className="text">{elsewhere.info.name}</b>.{" "}
+              <button type="button" className="btn btn-ghost" onClick={() => onSwitch(elsewhere.info.key)}>
+                Switch to {elsewhere.info.name}
+              </button>
+            </>
+          ) : target.info.quotes ? (
+            `It has no ${name} launch pool against ${target.info.quotes.map((q) => q.symbol).join(", ")}, and none of the other supported launchpads knows it either. Check the address.`
+          ) : (
+            `It isn't on any ${name} hook Monarchy knows, and none of the other supported launchpads knows it either. Check the address.`
+          )}
         </Empty>
       </Card>
     );
@@ -310,19 +317,30 @@ function PadToken({ pads, token, choice }: { pads: LaunchpadsDeployment; token: 
     );
   return (
     <>
-      {choice === "auto" && (
-        <p className="muted small pad-found">
-          Found on <b className="text">{target.info.name}</b>
-          {target.info.quotes && <>, paired with {target.info.quotes.find((q) => same(q.address, target.quote))?.symbol}</>}.{" "}
-          {!target.router &&
-            (target.info.delayed ? "Its fee wallet moves to the router 48 hours after you propose it. " : "The router takes over its creator fees as soon as you activate. ")}
-          <a href={target.info.site} target="_blank" rel="noreferrer">
-            {target.info.site.replace("https://", "")} <span aria-hidden="true">↗</span>
-          </a>
-        </p>
-      )}
+      <PadCheck name={name} quote={target.info.quotes?.find((q) => same(q.address, target.quote))?.symbol}>
+        {!target.router &&
+          (target.info.delayed ? "Its fee wallet moves to the router 48 hours after you propose it. " : "The router takes over its creator fees as soon as you activate. ")}
+        <a href={target.info.site} target="_blank" rel="noreferrer">
+          {target.info.site.replace("https://", "")} <span aria-hidden="true">↗</span>
+        </a>
+      </PadCheck>
       <PadRouterOrActivate pads={pads} f={target} token={token} />
     </>
+  );
+}
+
+/** The launchpad check: the coin is on the launchpad the creator picked. */
+function PadCheck({ name, quote, children }: { name: string; quote?: string; children?: React.ReactNode }) {
+  return (
+    <p className="small pad-check" role="status">
+      <span className="pad-check-mark" aria-hidden="true">
+        ✓
+      </span>{" "}
+      <span>
+        <b className="text">Right launchpad:</b> this coin is on {name}
+        {quote && <>, paired with {quote}</>}. {children}
+      </span>
+    </p>
   );
 }
 

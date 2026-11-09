@@ -793,3 +793,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
 .coin-profile { display: flex; gap: 16px; align-items: flex-start; }
 .coin-profile p { margin: 0 0 8px; overflow-wrap: anywhere; }
 .page-head .switch { margin-top: 16px; max-width: 420px; }
+/* the Lodestar page's launchpad check: the coin is on the launchpad the creator picked */
+.pad-check { display: flex; gap: 8px; align-items: baseline; margin: 0 0 16px; padding: 10px 14px; border: 1px solid rgba(155, 224, 176, 0.45); color: var(--muted, inherit); line-height: 1.5; }
+.pad-check-mark { color: var(--green); font-weight: 700; }
