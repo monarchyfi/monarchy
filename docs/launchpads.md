@@ -84,7 +84,7 @@ HYPE that reaches Exile outside a harvest is kept per sender and joins the harve
 
 **Only the harvest pool takes locks of a harvested coin.** A harvest claims the dividends on all of Exile's balance of the coin and pays them to one pool, so a plain time lock or a lock in another pool of the same coin would be earning dividends for that pool's lockers. Once a coin has a harvest, `lockERC20` refuses any lock of it outside the harvest pool (`HarvestPoolOnly`). Locks made before the harvest was set, that is before the router was activated, keep running to their end, and their coins' dividends go to the harvest pool from then on.
 
-A locker who unlocks just before a harvest misses that harvest's dividends, so the keeper harvests on every run. A router upgrade moves the coin's harvest to the new router's pool, and new locks of the coin go there; locks in the old pool keep running to their end.
+A locker who unlocks just before a harvest misses that harvest's dividends, so the keeper harvests on every run. A router upgrade moves the coin's harvest to the new router's pool, and new locks of the coin go there; locks in the old pool keep running to their end. From the upgrade on, the new router pays fees and the harvest pays dividends to the new pool only, so the old pool's lockers earn nothing new after what was already notified has dripped out, until they unlock and lock again in the new pool. That is why a successor factory is meant to keep paying a coin's old pool as well (see SECURITY.md); this factory, used as a successor, would not.
 
 ## Buybacks: phase 1 and phase 2
 

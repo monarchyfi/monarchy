@@ -47,6 +47,10 @@ jobs:
         env:
           SITE_BASE: ${{ steps.pages.outputs.base_path }}
           SITE_URL: ${{ steps.pages.outputs.base_url }}
+          # Unset, the site reads Elysium testnet. For the mainnet site set the SITE_CHAIN_ID repository
+          # variable to 99901 and IMAGE_UPLOAD_URL to the picture upload worker's URL (see README.md).
+          VITE_CHAIN_ID: ${{ vars.SITE_CHAIN_ID }}
+          VITE_IMAGE_UPLOAD_URL: ${{ vars.IMAGE_UPLOAD_URL }}
       # Encrypts it with staticrypt and copies it to 404.html, so deep links like /exile show the same
       # password page and then open the right route. The only build step that sees the password.
       - name: Encrypt

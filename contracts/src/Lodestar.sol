@@ -87,6 +87,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     uint256 public treasuryStreamId;
 
     address public steward;
+    /// @notice The address `transferSteward` named; it becomes steward with `acceptSteward`.
+    address public pendingSteward;
     Config internal _cfg;
     Config internal _pendingCfg;
     uint64 public pendingEta;
@@ -143,6 +145,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     event ForeignRoleReleased(address indexed foreignToken, address to);
     event ListingEnrolled(uint256 cap);
     event ListingClosed();
+    event StewardTransferStarted(address indexed next);
     event StewardTransferred(address indexed previous, address indexed next);
     event UpgradeProposed(address indexed factory, address indexed target, uint64 eta);
     event UpgradeCancelled();
@@ -150,6 +153,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
 
     error AlreadyInitialized();
     error OnlySteward();
+    error NotPendingSteward();
     error InvalidConfig();
     error NoPendingConfig();
     error TimelockActive();
@@ -604,14 +608,23 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit ListingClosed();
     }
 
+    /// @notice Start handing the steward role to `next`, which takes it with `acceptSteward`, so a mistyped
+    /// address can't strand the role or hand a stranger the config. Naming another address replaces a
+    /// pending handover; 0 cancels it. The current steward keeps every power until the new one accepts.
     function transferSteward(address next) external onlySteward {
-        if (next == address(0)) revert ZeroAddress();
-        emit StewardTransferred(steward, next);
-        steward = next;
+        pendingSteward = next;
+        emit StewardTransferStarted(next);
+    }
+
+    function acceptSteward() external {
+        if (msg.sender != pendingSteward) revert NotPendingSteward();
+        emit StewardTransferred(steward, msg.sender);
+        steward = msg.sender;
+        pendingSteward = address(0);
     }
 
     /// @notice Queue a new tier table for this token's Exile pool. This router is the pool's admin, so
-    /// tier changes follow the steward (and move with `transferSteward`) and wait out Exile's 12 hour
+    /// tier changes follow the steward (and move with the two-step `transferSteward`) and wait out Exile's 12 hour
     /// timelock; anyone can execute them on Exile once ready.
     function proposeTiers(IExile.Tier[] calldata tiers) external onlySteward {
         exile.proposeTiers(exilePoolId, tiers);

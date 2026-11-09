@@ -609,7 +609,49 @@ contract LodestarTest is MonarchyFixture {
 
         vm.prank(dev);
         l.transferSteward(trader);
+        vm.prank(trader);
+        l.acceptSteward();
         assertEq(l.steward(), trader);
+    }
+
+    /// @dev The steward role moves in two steps, like the factory's and Exile's owner roles: a mistyped address
+    /// can neither strand it nor hand a stranger the config, and nothing changes until the new steward accepts.
+    function test_stewardHandoverIsTwoStep() public {
+        Lodestar l = _activateDefault(false);
+        address stranger = makeAddr("stranger");
+
+        vm.prank(dev);
+        l.transferSteward(trader);
+        assertEq(l.steward(), dev, "the role stays put until accepted");
+        assertEq(l.pendingSteward(), trader);
+        // the named address has no powers yet, and nobody else can take the handover
+        vm.prank(trader);
+        vm.expectRevert(Lodestar.OnlySteward.selector);
+        l.lockCreatorRole(type(uint64).max);
+        vm.prank(stranger);
+        vm.expectRevert(Lodestar.NotPendingSteward.selector);
+        l.acceptSteward();
+        // the current steward still acts, and naming 0 cancels
+        vm.prank(dev);
+        l.transferSteward(address(0));
+        assertEq(l.pendingSteward(), address(0));
+        vm.prank(trader);
+        vm.expectRevert(Lodestar.NotPendingSteward.selector);
+        l.acceptSteward();
+
+        vm.prank(dev);
+        l.transferSteward(trader);
+        vm.prank(trader);
+        l.acceptSteward();
+        assertEq(l.steward(), trader);
+        assertEq(l.pendingSteward(), address(0));
+        vm.prank(dev);
+        vm.expectRevert(Lodestar.OnlySteward.selector);
+        l.transferSteward(dev);
+        // a pending handover can't be accepted twice
+        vm.prank(trader);
+        vm.expectRevert(Lodestar.NotPendingSteward.selector);
+        l.acceptSteward();
     }
 
     // ---------------------------------------------------------------- 10. reentrancy
@@ -928,6 +970,8 @@ contract LodestarTest is MonarchyFixture {
 
         vm.prank(dev);
         l.transferSteward(trader);
+        vm.prank(trader);
+        l.acceptSteward();
         vm.prank(dev);
         vm.expectRevert(Lodestar.OnlySteward.selector);
         l.proposeTiers(t);

@@ -9,7 +9,8 @@ compatibility_date = "2026-10-01"
 [vars]
 ALLOWED_ORIGINS = "https://monarchy.fi"
 CHAIN_ID = "99901"
-RPC_URL = "https://rpc-live.boxa.club"
+# the same public Elysium RPC the site reads; only smart-contract wallets' signatures are checked through it
+RPC_URL = "https://rpc.eleos.fun"
 
 [[kv_namespaces]]
 binding = "LIMITS"

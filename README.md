@@ -95,7 +95,7 @@ No lock, no rewards. A holder can also lock without rewards (a team locking its 
 - **Launchpad adapters.** Everything launchpad specific sits in a stateless adapter that only answers views and lists calls; the router sends those calls itself, only to its own hook, with no value. A coin names its own hook, and the adapter only accepts hooks its owner (the multisig) registered; the registry only grows. Exile's dividend harvest only takes three fixed claim shapes, set by the factory at activation.
 - **Fuzz and invariant tested.** Random sequences of locks, payouts, claims, top-ups, cancels, fees and failed buybacks check that Exile stays solvent and never pays out more than it received, that every Sandfall stream stays fully backed, and that every unit of quote a Lodestar handles ends up burned, locked, streamed or held in its buyback reserve.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and [SECURITY.md](SECURITY.md) for the security reviews and how to report an issue. The contracts have had six internal security reviews, the latest on November 9, 2026, but no third-party audit yet.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and [SECURITY.md](SECURITY.md) for the security reviews and how to report an issue. The contracts have had seven internal security reviews, the latest on November 9, 2026, but no third-party audit yet.
 
 ## Live on Elysium testnet
 
@@ -167,7 +167,7 @@ npm run web           # http://localhost:5173
 
 Point MetaMask or Rabby at `http://127.0.0.1:8545` (chain 31337) and import anvil's first account to act as the creator. On a dev server, `http://localhost:5173/?mock` connects that account without a browser wallet.
 
-The dev server reads the local chain when `deployments/31337.json` exists; a production build always reads Elysium testnet. Set `VITE_CHAIN_ID` to override either.
+The dev server reads the local chain when `deployments/31337.json` exists; a production build reads Elysium testnet unless `VITE_CHAIN_ID` says otherwise. The mainnet site is built with `VITE_CHAIN_ID=99901` and `VITE_IMAGE_UPLOAD_URL` set to the picture upload worker's URL; the Pages workflow takes both from the `SITE_CHAIN_ID` and `IMAGE_UPLOAD_URL` repository variables, so turning the live site to mainnet is a settings change, not a code change.
 
 ### The website deploy
 

@@ -43,7 +43,7 @@ abstract contract LaunchpadsBase is BaseScript {
         address lodestarImpl;
         address observer;
         uint256 startBlock;
-        Pad[6] pads; // ascend, volta, elyspump, boxa, kleos, montra
+        Pad[6] pads; // ascend, volta, montra, elyspump, boxa, kleos (the ASCEND..KLEOS constants above)
     }
 
     function _padName(uint256 i) internal pure returns (string memory) {

@@ -161,6 +161,13 @@ export const lodestarAbi = [
   },
   {
     "type": "function",
+    "name": "acceptSteward",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "burnSink",
     "inputs": [],
     "outputs": [
@@ -728,6 +735,19 @@ export const lodestarAbi = [
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingSteward",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -1485,6 +1505,19 @@ export const lodestarAbi = [
   },
   {
     "type": "event",
+    "name": "StewardTransferStarted",
+    "inputs": [
+      {
+        "name": "next",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "StewardTransferred",
     "inputs": [
       {
@@ -1648,6 +1681,11 @@ export const lodestarAbi = [
   {
     "type": "error",
     "name": "NotExtending",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotPendingSteward",
     "inputs": []
   },
   {
