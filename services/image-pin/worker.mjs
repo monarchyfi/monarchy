@@ -1,7 +1,9 @@
 // Monarchy's coin picture upload: pins a picture to IPFS for the launch form, the way Ascend's own form does
 // (https://app.ascendlaunch.xyz/launch). It takes what Ascend takes, a PNG, JPEG, GIF or WebP file under 2 MB, signed
-// for by the wallet that will launch or edit the coin, at most 10 a wallet a day, and answers with its ipfs:// link,
-// which the launch then keeps on chain. The Pinata key never leaves this service.
+// for by the wallet that will launch or edit the coin, and answers with its ipfs:// link, which the launch then keeps
+// on chain. The Pinata key never leaves this service. Wallets cost nothing to make, so on top of 10 uploads a wallet a
+// day there are 20 an IP address a day and 300 a day in all (MAX_UPLOADS_PER_DAY), which keeps a script with fresh
+// wallets from filling the Pinata plan; without the LIMITS store it refuses to pin at all.
 //
 // A Cloudflare Worker (see wrangler.toml), or any runtime with fetch, FormData and Web Crypto (dev.mjs runs it on
 // Node). Settings: PINATA_JWT (secret), ALLOWED_ORIGINS (the site's origins, comma separated), RPC_URL (Elysium, so
@@ -10,6 +12,9 @@ import { createPublicClient, getAddress, http, isAddress, isHex, verifyMessage }
 
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 export const PER_WALLET_PER_DAY = 10;
+export const PER_IP_PER_DAY = 20;
+/** Every upload in a day, all wallets together; MAX_UPLOADS_PER_DAY overrides it. */
+export const ALL_PER_DAY = 300;
 /** How far ahead a signature may expire, in seconds. */
 export const MAX_EXPIRY = 15 * 60;
 
@@ -118,12 +123,21 @@ export async function pin(request, env, now = Math.floor(Date.now() / 1000)) {
   if (!(await checkSignature(env, address, message, signature)))
     throw new Refused(401, "The signature doesn't match this wallet and picture.");
 
-  // the daily count goes up before pinning, so parallel uploads can't slip past it
-  const key = `uploads:${new Date(now * 1000).toISOString().slice(0, 10)}:${address.toLowerCase()}`;
-  const used = Number((await env.LIMITS?.get(key)) ?? 0);
-  if (used >= PER_WALLET_PER_DAY)
-    throw new Refused(429, `Each wallet can upload ${PER_WALLET_PER_DAY} pictures a day. Try again tomorrow.`);
-  await env.LIMITS?.put(key, String(used + 1), { expirationTtl: 2 * 24 * 60 * 60 });
+  // the daily counts go up before pinning, so parallel uploads can't slip past them (much: the store isn't atomic)
+  if (!env.LIMITS && env.PIN_MODE !== "mock") throw new Refused(503, "Picture uploads are paused. Please try again later.");
+  const day = new Date(now * 1000).toISOString().slice(0, 10);
+  // Cloudflare sets this header itself; a request can't choose it
+  const ip = request.headers.get("cf-connecting-ip");
+  const counts = [
+    [`uploads:${day}:${address.toLowerCase()}`, PER_WALLET_PER_DAY, `Each wallet can upload ${PER_WALLET_PER_DAY} pictures a day. Try again tomorrow.`],
+    ...(ip ? [[`uploads-ip:${day}:${ip}`, PER_IP_PER_DAY, "Too many pictures from this connection today. Try again tomorrow."]] : []),
+    [`uploads-all:${day}`, Number(env.MAX_UPLOADS_PER_DAY) || ALL_PER_DAY, "Picture uploads are full for today. Try again tomorrow, or launch without a picture."],
+  ];
+  const used = await Promise.all(counts.map(([key]) => env.LIMITS?.get(key).then((v) => Number(v ?? 0))));
+  counts.forEach(([, max, refusal], i) => {
+    if ((used[i] ?? 0) >= max) throw new Refused(429, refusal);
+  });
+  await Promise.all(counts.map(([key], i) => env.LIMITS?.put(key, String((used[i] ?? 0) + 1), { expirationTtl: 2 * 24 * 60 * 60 })));
 
   const cid = env.PIN_MODE === "mock" ? rawCid(await crypto.subtle.digest("SHA-256", bytes)) : await pinToPinata(env, bytes, type, sha256);
   if (env.PIN_MODE === "mock") env.MOCK_STORE?.set(cid, { bytes, type });

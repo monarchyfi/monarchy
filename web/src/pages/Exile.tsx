@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { useConnection, useReadContract, useReadContracts } from "wagmi";
+import { useChainId, useConnection, useReadContract, useReadContracts } from "wagmi";
 import { erc721Abi, isAddress, parseUnits, type Address } from "viem";
-import { exileAbi, lodestarAbi, mockERC20Abi } from "../abi";
+import { exileAbi, lodestarAbi, mockERC20Abi, voltaFeeSourceAbi } from "../abi";
 import { tagline, TierBadge } from "../components/Tiers";
 import { TxButton, WithApproval } from "../components/Tx";
 import { ConnectPrompt, NoDeployment } from "../components/States";
@@ -12,6 +12,7 @@ import { isSet, useDeployment, ZERO } from "../lib/deployments";
 import { date, duration, fmt, label, mult } from "../lib/format";
 import { POLL, useNow, usePageTitle, useTicking } from "../lib/hooks";
 import { DISTRIBUTE_NOTE } from "../lib/constants";
+import { launchpadsByChain } from "../lib/launchpads";
 import { dayLabel, useDripDays, useLockedTotal, useLodestarCore, useRouterOf, useTokenMeta, NATIVE_META, type TokenMeta } from "../lib/monarchy";
 import { days } from "./Home";
 
@@ -302,6 +303,21 @@ function estimate(r: Rates, points: bigint, seconds: number): { quote: bigint; s
   return { quote: over(r.rewardRate, r.periodFinish), stake: over(r.stakeRewardRate, r.stakePeriodFinish) };
 }
 
+/** The holders' share of a Volta coin's fee, in bps, which Volta pays to wallets only, so a coin locked in Exile
+ * stops earning it. Undefined for a coin that isn't on Volta, or on a chain without Monarchy's Volta adapter. */
+function useVoltaHolderShare(token?: Address): number | undefined {
+  const chainId = useChainId();
+  const source = launchpadsByChain[chainId]?.launchpads.volta?.source;
+  const split = useReadContract({
+    address: source,
+    abi: voltaFeeSourceAbi,
+    functionName: "split",
+    args: [token ?? ZERO],
+    query: { enabled: !!token && isSet(source), retry: false },
+  });
+  return split.data ? Number(split.data[2]) : undefined;
+}
+
 /** "Something else": any token or LP (with rewards when it has a Lodestar), or an NFT. */
 function SomethingElse({ exile }: { exile: Address }) {
   const [kind, setKind] = useState<"token" | "nft">("token");
@@ -320,6 +336,7 @@ function SomethingElse({ exile }: { exile: Address }) {
   const pool = useReadContract({ address: exile, abi: exileAbi, functionName: "poolInfo", args: [poolId ?? 0n], query: { enabled: poolId !== undefined } });
   const tiers = (pool.data?.tiers ?? []) as readonly Tier[];
   const rewarded = !!harvestPool || !!router;
+  const voltaHolders = useVoltaHolderShare(token);
   const checking = !!token && (lodestar.isLoading || harvest.isLoading || (!!router && pid.isLoading) || (rewarded && pool.isLoading));
   return (
     <>
@@ -356,6 +373,12 @@ function SomethingElse({ exile }: { exile: Address }) {
                     ? "This token uses Lodestar, so this lock earns rewards by tier."
                     : "No Lodestar for this token: a plain lock, held until the unlock date, with no rewards."}
           </p>
+          {token && !checking && !!voltaHolders && (
+            <p className="warn small">
+              Volta pays this coin's own holder rewards to wallets only, so it stops earning them while it's locked here.
+              {router ? " This lock earns its Lodestar's rewards instead." : ""}
+            </p>
+          )}
           {token && !checking && (
             <div style={{ marginTop: 16 }}>
               <LockForm key={token} exile={exile} token={token} poolId={rewarded ? poolId : 0n} tiers={rewarded ? tiers : []} tiersLoading={rewarded && (!poolId || !pool.data)} canOptOut={!!router} />

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import worker, { uploadMessage, PER_WALLET_PER_DAY, MAX_IMAGE_BYTES } from "./worker.mjs";
+import worker, { uploadMessage, PER_WALLET_PER_DAY, PER_IP_PER_DAY, MAX_IMAGE_BYTES } from "./worker.mjs";
 
 // throwaway keys made for each run
 const alice = privateKeyToAccount(generatePrivateKey());
@@ -24,7 +24,7 @@ function setup() {
   };
 }
 
-async function upload(env, { bytes = png(), signer = alice, wallet = signer.address, expires = now() + 600, sign = true, type = "image/png" } = {}) {
+async function upload(env, { bytes = png(), signer = alice, wallet = signer.address, expires = now() + 600, sign = true, type = "image/png", ip } = {}) {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   const sha256 = "0x" + [...digest].map((x) => x.toString(16).padStart(2, "0")).join("");
   const message = uploadMessage({ wallet, chainId: 99901, sha256, expires });
@@ -33,7 +33,7 @@ async function upload(env, { bytes = png(), signer = alice, wallet = signer.addr
   form.set("wallet", wallet);
   form.set("expires", String(expires));
   form.set("signature", sign ? await signer.signMessage({ message }) : "0x");
-  const res = await worker.fetch(new Request("https://pin.example/v1/image", { method: "POST", body: form, headers: { origin: "https://monarchy.fi" } }), env);
+  const res = await worker.fetch(new Request("https://pin.example/v1/image", { method: "POST", body: form, headers: { origin: "https://monarchy.fi", ...(ip ? { "cf-connecting-ip": ip } : {}) } }), env);
   return { status: res.status, body: await res.json(), cors: res.headers.get("access-control-allow-origin") };
 }
 
@@ -73,4 +73,28 @@ test("ten a wallet a day", async () => {
   const r = await upload(env, { bytes: png(99) });
   assert.equal(r.status, 429);
   assert.equal((await upload(env, { signer: bob })).status, 200);
+});
+
+test("fresh wallets can't get past the IP and daily caps", async () => {
+  const { env } = setup();
+  for (let i = 0; i < PER_IP_PER_DAY; i++) {
+    const signer = privateKeyToAccount(generatePrivateKey());
+    assert.equal((await upload(env, { signer, bytes: png(10 + i), ip: "203.0.113.7" })).status, 200);
+  }
+  assert.equal((await upload(env, { signer: privateKeyToAccount(generatePrivateKey()), ip: "203.0.113.7" })).status, 429);
+  assert.equal((await upload(env, { signer: bob, ip: "198.51.100.2" })).status, 200, "another connection still can");
+
+  const { env: small } = setup();
+  small.MAX_UPLOADS_PER_DAY = "3";
+  for (let i = 0; i < 3; i++) assert.equal((await upload(small, { signer: privateKeyToAccount(generatePrivateKey()), bytes: png(i) })).status, 200);
+  const full = await upload(small, { signer: bob });
+  assert.equal(full.status, 429);
+  assert.match(full.body.error, /full for today/);
+});
+
+test("refuses to pin for real without the LIMITS store", async () => {
+  const { env } = setup();
+  delete env.LIMITS;
+  env.PIN_MODE = "pinata";
+  assert.equal((await upload(env)).status, 503);
 });

@@ -57,8 +57,12 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
   // Ascend first and picked to start with; ?launchpad= picks another
   const [choice, setChoice] = useState<PadKey>(() => list.find(({ info }) => info.key === fromUrl)?.info.key ?? list[0]?.info.key ?? "ascend");
   const ascend = list.find(({ info }) => info.key === "ascend")?.pad;
-  const canLaunch = !!ascend && isSet(ascend.launcher);
-  const [mode, setMode] = useState<"activate" | "launch">(() => (params.get("launch") && canLaunch ? "launch" : "activate"));
+  const recorded = !!ascend && isSet(ascend.launcher);
+  // the factory only takes the launcher's deploys once the multisig names it (setLauncher), so the tab waits for that
+  const named = useReadContract({ address: ascend?.factory, abi: lodestarFactoryAbi, functionName: "launcher", query: { enabled: recorded, ...POLL.query } });
+  const canLaunch = recorded && !!named.data && named.data.toLowerCase() === ascend!.launcher!.toLowerCase();
+  const [picked, setMode] = useState<"activate" | "launch">(() => (params.get("launch") && recorded ? "launch" : "activate"));
+  const mode = canLaunch ? picked : "activate";
   const token = isAddress(input) ? input : undefined;
   const badInput = input !== "" && !token;
   return (
