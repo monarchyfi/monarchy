@@ -3,47 +3,6 @@ pragma solidity ^0.8.24;
 
 import {V4PoolKey} from "./IUniswapV4.sol";
 
-/// @notice Eleos's hook (verified source on elysiumexplore.com, hook 3 at 0x8680…6acC): the subset Monarchy uses.
-interface IEleosHook {
-    struct Config {
-        address creator;
-        uint16 buyBps;
-        uint16 sellBps;
-        uint16 creatorBps; // the split of the tax after the platform share, sums to 10000
-        uint16 holdersBps;
-        uint16 buybackBps;
-        uint16 lpBps;
-        uint32 snipeSecs;
-    }
-
-    struct Book {
-        uint64 launchedAt;
-        int24 startTick;
-        int24 emaTick;
-        uint64 emaAt;
-        uint128 pending;
-        uint128 snipePending;
-        uint128 lpHype;
-        uint128 lpTokens;
-        uint128 creatorOwed;
-    }
-
-    function poolManager() external view returns (address);
-    function platformBps() external view returns (uint16);
-    function keyFor(address token) external view returns (V4PoolKey memory);
-    function poolIdOf(address token) external view returns (bytes32);
-    function config(address token) external view returns (Config memory);
-    function book(address token) external view returns (Book memory);
-    function taxNow(address token) external view returns (uint256 buyBps, uint256 sellBps);
-    function processable(address token)
-        external
-        view
-        returns (bool ok, uint256 total, int24 tick, int24 average);
-    function process(address token) external returns (uint256 total);
-    function payCreator(address token) external returns (uint256 amount);
-    function transferCreator(address token, address to) external;
-}
-
 /// @notice Kleos's hooks (unverified; names from selector lookups, shapes from eth_call on Elysium mainnet).
 /// Hooks A and B pay creator fees in native HYPE only; hook C is multi-quote and keys fees by quote.
 interface IKleosHook {
@@ -101,4 +60,75 @@ interface IElysPumpHook {
     function flush(address token) external;
     function holderPending(address token) external view returns (uint256);
     function buybackPending(address token) external view returns (uint256);
+}
+
+/// @notice Volta's PositionManager (volta.family), the Uniswap v4 hook of every Volta pool, a fork of Flaunch's. ABIs
+/// published by Volta at volta.family/abi/volta.json. A coin's creator role is an NFT, its fee shares are fixed at
+/// launch, and the creator's share is credited, as fees are distributed, to whoever holds the NFT then, in the
+/// pool's fee escrow.
+interface IVoltaPositionManager {
+    struct CreatorSplit {
+        uint24 creator;
+        uint24 buyback;
+        uint24 holders;
+    }
+
+    struct PoolFees {
+        uint24 swapFee; // bps
+        uint24 antiSnipeStartFee;
+        uint32 antiSnipeDuration;
+        uint64 tradingOpensAt;
+        CreatorSplit creatorSplit; // bps of the creator side (the 70% left after the protocol's 30%)
+    }
+
+    function poolManager() external view returns (address);
+    function flaunchContract() external view returns (address); // the creator NFT
+    function poolKey(address token) external view returns (V4PoolKey memory);
+    function poolFees(bytes32 poolId) external view returns (PoolFees memory);
+    function currentSwapFee(bytes32 poolId, bool isBuy) external view returns (uint24); // bps
+    function pairedTokenFeeEscrow(bytes32 poolId) external view returns (address);
+}
+
+/// @notice Volta's creator NFT: one token per launch, an ERC-721 whose holder is the coin's creator.
+interface IVoltaCreatorNFT {
+    function positionManager() external view returns (address);
+    function tokenId(address memecoin) external view returns (uint256);
+    function memecoin(uint256 tokenId) external view returns (address);
+    function ownerOf(uint256 tokenId) external view returns (address);
+    function transferFrom(address from, address to, uint256 tokenId) external;
+}
+
+/// @notice Volta's fee escrow: creator fees by recipient and currency, across every coin the recipient has held the
+/// NFT of. `withdrawFees` pays the caller's balance to `recipient` (native HYPE whether or not `unwrap`).
+interface IVoltaFeeEscrow {
+    function balances(address recipient, address token) external view returns (uint256);
+    function withdrawFees(address token, address recipient, bool unwrap) external;
+}
+
+/// @notice Volta's coin: `flaunch()` names the creator NFT contract, `creator()` its current holder.
+interface IVoltaToken {
+    function flaunch() external view returns (address);
+    function creator() external view returns (address);
+}
+
+/// @notice Montra's LaunchHook (montramarkets.xyz), the Uniswap v4 hook of every Montra pool. ABIs published by
+/// Montra at montramarkets.xyz/docs/abis.json. Each pool pays its creator side to one recipient (a wallet, a
+/// splitter or the coin's holders), who claims whenever they like and hands the stream on in one call, unclaimed
+/// fees included. Fee rates are in pips (1,000,000 = 100%).
+interface IMontraHook {
+    function poolManager() external view returns (address);
+    function poolKey(bytes32 poolId) external view returns (V4PoolKey memory);
+    function quoteOf(bytes32 poolId) external view returns (address);
+    function recipientOf(bytes32 poolId) external view returns (address);
+    function tab(bytes32 poolId) external view returns (uint256); // swept, waiting for the recipient
+    function pendingCreator(bytes32 poolId) external view returns (uint256); // what a sweep would add
+    function currentBuyFeeRate(bytes32 poolId) external view returns (uint256); // pips, all in
+    function claim(bytes32 poolId, address to) external returns (uint256); // the recipient only; sweeps first
+    function updateRecipient(bytes32 poolId, address newRecipient) external; // the recipient only, at once
+}
+
+/// @notice Montra's coin: its pool and hook.
+interface IMontraToken {
+    function poolId() external view returns (bytes32);
+    function hook() external view returns (address);
 }

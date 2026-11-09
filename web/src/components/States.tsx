@@ -14,7 +14,7 @@ export function TestnetStrip() {
       <div className="strip" role="note">
         <span className="strip-dot" />
         <span>
-          <b>Elysium mainnet.</b> Coins on Eleos, Kleos, Boxa, Ascend and ElysPump, with real value.
+          <b>Elysium mainnet.</b> Coins on Ascend, Volta, ElysPump, Boxa, Kleos and Montra, with real value.
         </span>
       </div>
     );

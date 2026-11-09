@@ -7,21 +7,26 @@ import {LodestarFactory} from "../src/LodestarFactory.sol";
 import {ILodestar} from "../src/interfaces/ILodestar.sol";
 import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
 
-/// @notice Monarchy on the Uniswap v4 launchpads of Elysium mainnet (Eleos, Kleos, Boxa, Ascend v5, ElysPump): the hook
-/// registries the adapters start with, and `deployments/launchpads/<chainId>.json`, which records one shared core
+/// @notice Monarchy on the Uniswap v4 launchpads of Elysium mainnet (Ascend v5, Volta, ElysPump, Boxa, Kleos, Montra):
+/// the hook registries the adapters start with, and `deployments/launchpads/<chainId>.json`, which records one shared core
 /// (Exile, Sandfall, the Lodestar implementation, the price observer) plus an adapter, a factory and a buyback
 /// swapper per pool manager for each launchpad (a V4Swapper, or an AscendV5Swapper on Ascend). The routers themselves are not listed: each factory's `allLodestars` is the list.
 /// The file sits in its own folder because the website loads every `deployments/*.json` as an Ascend deployment.
 /// LAUNCHPADS_FILE points the scripts at another file under deployments/ (rehearsals on a local fork).
 abstract contract LaunchpadsBase is BaseScript {
     uint256 internal constant ELYSIUM_MAINNET = 99901;
-    uint256 internal constant PADS = 5;
+    uint256 internal constant PADS = 6;
     /// @dev Ascend v5's launchpad (every launch pool's hook) and BurnSink, from Ascend's contract registry.
     address internal constant ASCEND_V5_LAUNCHPAD = 0xe0dEF4221b9840a610D4e7d55812a79A6431a8eC;
     address internal constant ASCEND_V5_BURN_SINK = 0x9F0b0e3B362937b07Cd1E869b50687961e0c7741;
     address internal constant ASCEND_V5_WHYPE = 0xbA876237B0F021A6c6D852d6c26E107997cC5E81;
-    uint256 internal constant ASCEND = 3;
-    uint256 internal constant ELYSPUMP = 4;
+    /// @dev The launchpads in the website's order.
+    uint256 internal constant ASCEND = 0;
+    uint256 internal constant VOLTA = 1;
+    uint256 internal constant ELYSPUMP = 2;
+    uint256 internal constant BOXA = 3;
+    uint256 internal constant KLEOS = 4;
+    uint256 internal constant MONTRA = 5;
 
     struct Pad {
         address source; // the launchpad's IFeeSource adapter
@@ -38,71 +43,48 @@ abstract contract LaunchpadsBase is BaseScript {
         address lodestarImpl;
         address observer;
         uint256 startBlock;
-        Pad[5] pads; // eleos, kleos, boxa, ascend, elyspump
+        Pad[6] pads; // ascend, volta, elyspump, boxa, kleos, montra
     }
 
     function _padName(uint256 i) internal pure returns (string memory) {
-        if (i == 0) return "eleos";
-        if (i == 1) return "kleos";
-        if (i == 2) return "boxa";
-        if (i == 3) return "ascend";
-        if (i == 4) return "elyspump";
+        if (i == ASCEND) return "ascend";
+        if (i == VOLTA) return "volta";
+        if (i == ELYSPUMP) return "elyspump";
+        if (i == BOXA) return "boxa";
+        if (i == KLEOS) return "kleos";
+        if (i == MONTRA) return "montra";
         revert("no such launchpad");
     }
 
-    /// @dev LAUNCHPAD=eleos|kleos|boxa|ascend|elyspump
+    /// @dev LAUNCHPAD=ascend|volta|elyspump|boxa|kleos|montra
     function _padIndex(string memory name) internal pure returns (uint256) {
         for (uint256 i; i < PADS; ++i) {
             if (keccak256(bytes(name)) == keccak256(bytes(_padName(i)))) return i;
         }
-        revert("LAUNCHPAD must be eleos, kleos, boxa, ascend or elyspump");
+        revert("LAUNCHPAD must be ascend, volta, elyspump, boxa, kleos or montra");
     }
 
     /// @notice The hooks each adapter knows at deploy, with their kinds, and the pool managers they swap on. Read
-    /// from Elysium mainnet on November 4, 2026 (ElysPump on November 8; see docs/launchpads.md, and Ascend v5 in
-    /// docs/ascend-v5.md). A new hook generation is added later by the adapter's owner with `addHook`, without a
+    /// from Elysium mainnet on November 4, 2026 (ElysPump on November 8, Volta and Montra on November 9; see
+    /// docs/launchpads.md, and Ascend v5 in docs/ascend-v5.md). A new hook generation is added later by the adapter's owner with `addHook`, without a
     /// redeploy.
     function _registry(uint256 i)
         internal
         pure
         returns (address[] memory hooks, uint8[] memory kinds, address[] memory pms)
     {
-        if (i == 0) {
-            // Eleos (eleos.fun): hooks 1, 2 and 3 share one ABI
-            hooks = new address[](3);
-            kinds = new uint8[](3);
-            (hooks[0], kinds[0]) = (0x6BcDf22D303C029805a733270E450C99E1DbAACC, 1);
-            (hooks[1], kinds[1]) = (0xb0dcb98508173C29AD57Df444EE3e91fc681aacc, 1);
-            (hooks[2], kinds[2]) = (0x8680965555DCEa2a4c0Ed3a29e59a8AA424E6acC, 1);
-            pms = new address[](1);
-            pms[0] = 0x5c54A7293D96B11a29A0256eE8dfdBC3059637Da;
-        } else if (i == 1) {
-            // Kleos (thekleos.xyz): hooks A and B single-quote, hook C multi-quote
-            hooks = new address[](3);
-            kinds = new uint8[](3);
-            (hooks[0], kinds[0]) = (0x0c835e6A51717a514144d95c7F0a1C640179E0Cc, 1);
-            (hooks[1], kinds[1]) = (0x772AccB053609D361593345e361D2a6854Ede8cc, 1);
-            (hooks[2], kinds[2]) = (0xD5068e7f4e2D70d5eFbaC6fD28A8407252E1EAcC, 2);
-            pms = new address[](1);
-            pms[0] = 0xb308B5df891c300a5f5a5b8fdBC30108bA842490;
-        } else if (i == 2) {
-            // Boxa (boxa.club): the main hook, the pairs and meme-pairs hooks, and the uni launcher's hook, which
-            // runs on a pool manager of its own
-            hooks = new address[](4);
-            kinds = new uint8[](4);
-            (hooks[0], kinds[0]) = (0xBCc1f22d137C1D98DFa5548E4d4261D7AeE06acC, 1);
-            (hooks[1], kinds[1]) = (0xB3E25CDf4a2f42e7f37aB3aE43Bfb90EE8052AcC, 2);
-            (hooks[2], kinds[2]) = (0xD2f8e16ba85e9D160724e893B3ebCe53D00E6Acc, 2);
-            (hooks[3], kinds[3]) = (0x00C002Cdae688F39a90CF2AD74c59421C9502aCC, 3);
-            pms = new address[](2);
-            pms[0] = 0x06C63714fBf1F5753017123E2FcfdEde4540B2c4;
-            pms[1] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
-        } else if (i == ASCEND) {
+        if (i == ASCEND) {
             // Ascend v5 (ascendlaunch.xyz): the launchpad is every pool's hook and the adapter finds pools through
-            // its escrow factory, so there is no hook list. Its pools run on the same pool manager as Boxa's uni
-            // launcher.
+            // its escrow factory, so there is no hook list. Its pools run on the official pool manager.
             hooks = new address[](0);
             kinds = new uint8[](0);
+            pms = new address[](1);
+            pms[0] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
+        } else if (i == VOLTA) {
+            // Volta (volta.family): its PositionManager is every pool's hook, on the official pool manager
+            hooks = new address[](1);
+            kinds = new uint8[](1);
+            (hooks[0], kinds[0]) = (0x3aB88DDc3CF2A012af88B60828edb4553697E5dC, 1);
             pms = new address[](1);
             pms[0] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
         } else if (i == ELYSPUMP) {
@@ -115,6 +97,34 @@ abstract contract LaunchpadsBase is BaseScript {
             pms = new address[](2);
             pms[0] = 0x5fb015a49f5b35073f9Ce01C2aDb287A75F89600;
             pms[1] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
+        } else if (i == BOXA) {
+            // Boxa (boxa.club): the main hook, the pairs and meme-pairs hooks, and the uni launcher's hook, which
+            // runs on the official pool manager
+            hooks = new address[](4);
+            kinds = new uint8[](4);
+            (hooks[0], kinds[0]) = (0xBCc1f22d137C1D98DFa5548E4d4261D7AeE06acC, 1);
+            (hooks[1], kinds[1]) = (0xB3E25CDf4a2f42e7f37aB3aE43Bfb90EE8052AcC, 2);
+            (hooks[2], kinds[2]) = (0xD2f8e16ba85e9D160724e893B3ebCe53D00E6Acc, 2);
+            (hooks[3], kinds[3]) = (0x00C002Cdae688F39a90CF2AD74c59421C9502aCC, 3);
+            pms = new address[](2);
+            pms[0] = 0x06C63714fBf1F5753017123E2FcfdEde4540B2c4;
+            pms[1] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
+        } else if (i == KLEOS) {
+            // Kleos (thekleos.xyz): hooks A and B single-quote, hook C multi-quote
+            hooks = new address[](3);
+            kinds = new uint8[](3);
+            (hooks[0], kinds[0]) = (0x0c835e6A51717a514144d95c7F0a1C640179E0Cc, 1);
+            (hooks[1], kinds[1]) = (0x772AccB053609D361593345e361D2a6854Ede8cc, 1);
+            (hooks[2], kinds[2]) = (0xD5068e7f4e2D70d5eFbaC6fD28A8407252E1EAcC, 2);
+            pms = new address[](1);
+            pms[0] = 0xb308B5df891c300a5f5a5b8fdBC30108bA842490;
+        } else if (i == MONTRA) {
+            // Montra (montramarkets.xyz): its launch hook, the one its registry lists, on the official pool manager
+            hooks = new address[](1);
+            kinds = new uint8[](1);
+            (hooks[0], kinds[0]) = (0x6b1216A40B65c83e9c9e18a562C446697B8cf8EC, 1);
+            pms = new address[](1);
+            pms[0] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
         } else {
             revert("no such launchpad");
         }
@@ -184,9 +194,10 @@ abstract contract LaunchpadsBase is BaseScript {
     }
 
     /// @dev Whether a launchpad's factory has to be an Exile registrar: only when its coins can pay holders
-    /// dividends that Exile harvests. Ascend v5 coins pay none, so its factory never asks for the role.
+    /// dividends that Exile harvests (ElysPump, Boxa, Kleos). Ascend v5 coins pay none, Volta pays holders as
+    /// wallets only and a Montra coin paying its holders can't be activated, so those factories never ask.
     function _needsRegistrar(uint256 i) internal pure returns (bool) {
-        return i != ASCEND;
+        return i == ELYSPUMP || i == BOXA || i == KLEOS;
     }
 
     /// @dev A router's settings from the environment (see ActivateLaunchpad for the variables and defaults).
@@ -204,7 +215,7 @@ abstract contract LaunchpadsBase is BaseScript {
             swapper = vm.parseAddress(s);
         }
         p.token = token;
-        p.quote = quote; // native HYPE on Eleos, Kleos, Boxa and ElysPump; an ERC-20 on Ascend v5
+        p.quote = quote; // native HYPE on Volta, ElysPump, Boxa, Kleos and Montra; an ERC-20 on Ascend v5
         p.cfg = ILodestar.Config({
             burnBps: uint16(vm.envOr("BURN_BPS", uint256(2_000))),
             holdersBps: uint16(vm.envOr("HOLDERS_BPS", uint256(5_000))),

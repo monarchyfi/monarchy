@@ -9,26 +9,28 @@ import {Lodestar} from "../src/Lodestar.sol";
 import {LodestarFactory} from "../src/LodestarFactory.sol";
 import {ILodestar} from "../src/interfaces/ILodestar.sol";
 import {IFeeSource} from "../src/interfaces/IFeeSource.sol";
-import {IEleosHook, IBoxaHook} from "../src/interfaces/ILaunchpadHooks.sol";
+import {IBoxaHook, IMontraHook, IMontraToken} from "../src/interfaces/ILaunchpadHooks.sol";
 import {V4FeeSource} from "../src/sources/V4FeeSource.sol";
 import {AscendV5FeeSource} from "../src/sources/AscendV5FeeSource.sol";
 import {IAscendV5Escrow} from "../src/interfaces/IAscendV5.sol";
 import {MonarchTiers} from "../src/libraries/MonarchTiers.sol";
 import {MockArbSys} from "../src/mocks/MockArbSys.sol";
 
-/// @notice Activate a Lodestar for a coin on Eleos, Kleos, Boxa, Ascend v5 or ElysPump, run by the coin's creator
-/// (PRIVATE_KEY is the address the launchpad records as creator, the fee receiver on ElysPump).
-/// LAUNCHPAD=eleos|kleos|boxa|ascend|elyspump, TOKEN=<coin>,
+/// @notice Activate a Lodestar for a coin on Ascend v5, Volta, ElysPump, Boxa, Kleos or Montra, run by the coin's
+/// creator (PRIVATE_KEY is the address the launchpad records as creator: the holder of the creator NFT on Volta, the
+/// fee receiver on ElysPump, the pool's recipient on Montra).
+/// LAUNCHPAD=ascend|volta|elyspump|boxa|kleos|montra, TOKEN=<coin>,
 /// TREASURY=<Team Treasury recipient, permanent>. The order follows the launchpad, so a creator can't get it wrong:
 /// - Boxa (two-step, like Ascend): `proposeCreator(poolId, router)` on the hook, then `factory.deploy`, which
 ///   accepts the role.
-/// - Eleos, Kleos and ElysPump (one-step): `factory.deploy` first, then the hand-over on the hook
-///   (`transferCreator(coin, router)`, or `setFeeReceiver(coin, router)` on ElysPump). If the second transaction
-///   doesn't land, run the script again: it sees the router and only hands the role over.
-///   On Eleos the fees the hook holds for the coin follow the role, so the script first pays the creator what
-///   they earned (`process` if due, then `payCreator`) unless CLAIM_FIRST=false. Kleos, Boxa and ElysPump keep
-///   earned fees by address, so the creator claims those on the launchpad whenever they like. An ElysPump coin
-///   whose receiver share is 0 has nothing to route and can't be activated.
+/// - Volta, ElysPump, Kleos and Montra (one-step): `factory.deploy` first, then the hand-over (Volta: the creator
+///   NFT's `transferFrom(creator, router, id)`; ElysPump: `setFeeReceiver(coin, router)`; Kleos:
+///   `transferCreator(coin, router)`; Montra: `updateRecipient(poolId, router)`). If the second transaction doesn't
+///   land, run the script again: it sees the router and only hands the role over.
+///   On Montra the fees the hook holds for the pool follow the role, so the script first pays the creator what
+///   they earned (`claim(poolId, creator)`) unless CLAIM_FIRST=false. Volta, ElysPump, Boxa and Kleos keep earned
+///   fees by address, so the creator claims those on the launchpad whenever they like. A Volta coin whose creator
+///   share is 0, or an ElysPump coin whose receiver share is 0, has nothing to route and can't be activated.
 /// - Ascend v5 (two-step with a 48 hour wait): `proposeRecipient(router)` on the pool's escrow, then
 ///   `factory.deploy`, which leaves the hand-off pending. Run the script again once the 48 hours are over (any
 ///   funded key will do then) and it calls the router's `acceptCreator()`. QUOTE=whype|usdc|kntq|<address> picks
@@ -50,23 +52,23 @@ contract ActivateLaunchpad is LaunchpadsBase {
         if (block.chainid == ELYSIUM_MAINNET) vm.etch(address(0x64), type(MockArbSys).runtimeCode);
         Launchpads memory d = _lpLoad();
         uint256 li = _padIndex(vm.envString("LAUNCHPAD"));
-        Pad memory pad = d.pads[li];
-        require(_has(pad.factory), "no factory for this launchpad in the deployments file; run DeployLaunchpads");
-        LodestarFactory factory = LodestarFactory(pad.factory);
-        V4FeeSource source = V4FeeSource(pad.source);
+        require(_has(d.pads[li].factory), "no factory for this launchpad in the deployments file; run DeployLaunchpads");
         address token = vm.envAddress("TOKEN");
         uint256 pk = _deployerKey();
         address me = vm.addr(pk);
-        if (li == ASCEND) return _activateAscend(pad, factory, token, pk, me);
+        if (li == ASCEND) return _activateAscend(d.pads[li], LodestarFactory(d.pads[li].factory), token, pk, me);
+        _activateV4(d, li, token, pk, me);
+    }
 
+    /// @dev Every launchpad but Ascend: Boxa two-step, the others one-step.
+    function _activateV4(Launchpads memory d, uint256 li, address token, uint256 pk, address me) internal {
+        LodestarFactory factory = LodestarFactory(d.pads[li].factory);
+        V4FeeSource source = V4FeeSource(d.pads[li].source);
         // reverts with UnsupportedHook or QuoteUnsupported for a coin the adapter can't serve
         (address predicted, bytes32 poolId) = factory.predict(token, address(0));
-        (address hook, V4FeeSource.HookInfo memory info) = source.hookOf(token);
         bool twoStep = source.handover() == IFeeSource.Handover.TwoStep;
         address creator = source.creator(token, poolId);
-        LodestarFactory.DeployParams memory p = _params(token, address(0), pad, info.poolManager);
-        console2.log("coin", token);
-        console2.log("hook", hook);
+        LodestarFactory.DeployParams memory p = _v4Params(source, token, d.pads[li]);
         console2.log("predicted Lodestar", predicted);
         console2.log("creator on the launchpad", creator);
 
@@ -93,30 +95,53 @@ contract ActivateLaunchpad is LaunchpadsBase {
             return;
         }
         require(creator == me, "PRIVATE_KEY is not the coin's creator on the launchpad");
+        _preflight(source, factory, d.exile, token, poolId, p.cfg.swapper);
+
+        vm.startBroadcast(pk);
+        if (twoStep) {
+            require(li == BOXA, "two-step activation is written for Boxa");
+            (address hook,) = source.hookOf(token);
+            if (source.pendingCreator(token, poolId) != predicted) IBoxaHook(hook).proposeCreator(poolId, predicted);
+            require(factory.deploy(p) == predicted, "deployed somewhere else");
+        } else {
+            if (li == MONTRA && vm.envOr("CLAIM_FIRST", true)) _claimMontra(source, token, me);
+            require(factory.deploy(p) == predicted, "deployed somewhere else");
+            _handOver(source, token, poolId, predicted);
+        }
+        vm.stopBroadcast();
+        _check(predicted);
+    }
+
+    function _v4Params(V4FeeSource source, address token, Pad memory pad)
+        internal
+        view
+        returns (LodestarFactory.DeployParams memory p)
+    {
+        (address hook, V4FeeSource.HookInfo memory info) = source.hookOf(token);
+        console2.log("coin", token);
+        console2.log("hook", hook);
+        p = _params(token, address(0), pad, info.poolManager);
+    }
+
+    function _preflight(
+        V4FeeSource source,
+        LodestarFactory factory,
+        address exile,
+        address token,
+        bytes32 poolId,
+        address swapper
+    ) internal view {
         (, bytes4 claimSelector) = source.dividendClaim(token);
         require(
             claimSelector != bytes4(0) || source.holdersShareBps(token, poolId) == 0,
             "this coin pays holders a share Exile can't pass on to lockers (Kleos hook C); it can't be activated"
         );
         require(
-            claimSelector == bytes4(0) || Exile(payable(d.exile)).isRegistrar(address(factory)),
+            claimSelector == bytes4(0) || Exile(payable(exile)).isRegistrar(address(factory)),
             "the factory isn't an Exile registrar yet; run FinishLaunchpads"
         );
-        address swapper = p.cfg.swapper == address(0) ? factory.defaultSwapper() : p.cfg.swapper;
+        if (swapper == address(0)) swapper = factory.defaultSwapper();
         console2.log("buyback swapper (0 = buyback share waits in reserve)", swapper);
-
-        vm.startBroadcast(pk);
-        if (twoStep) {
-            require(li == 2, "two-step activation is written for Boxa");
-            if (source.pendingCreator(token, poolId) != predicted) IBoxaHook(hook).proposeCreator(poolId, predicted);
-            require(factory.deploy(p) == predicted, "deployed somewhere else");
-        } else {
-            if (li == 0 && vm.envOr("CLAIM_FIRST", true)) _claimEleos(hook, token);
-            require(factory.deploy(p) == predicted, "deployed somewhere else");
-            _handOver(source, token, poolId, predicted);
-        }
-        vm.stopBroadcast();
-        _check(predicted);
     }
 
     /// @dev Ascend v5: propose, deploy, and once the escrow's 48 hours are over, accept. Each run does what is left.
@@ -221,13 +246,13 @@ contract ActivateLaunchpad is LaunchpadsBase {
         }
     }
 
-    /// @dev A one-step hand-over, as the adapter builds it: `transferCreator(coin, router)` on Eleos and Kleos,
-    /// `setFeeReceiver(coin, router)` on ElysPump, always to the coin's hook.
+    /// @dev A one-step hand-over, as the adapter builds it, always to the contract that holds the role (the coin's
+    /// hook, or Volta's creator NFT).
     function _handOver(V4FeeSource source, address token, bytes32 poolId, address router) internal {
         IFeeSource.Call[] memory cs = source.transferOutCalls(token, poolId, router);
         require(cs.length == 1, "the adapter has no one-step hand-over");
-        (address hook,) = source.hookOf(token);
-        require(cs[0].target == hook, "the hand-over isn't on the coin's hook");
+        (, address roleHolder,) = source.resolve(token, address(0));
+        require(cs[0].target == roleHolder, "the hand-over isn't on the contract that holds the role");
         (bool ok, bytes memory r) = cs[0].target.call(cs[0].data);
         if (!ok) {
             assembly {
@@ -236,11 +261,11 @@ contract ActivateLaunchpad is LaunchpadsBase {
         }
     }
 
-    /// @dev Pays the Eleos creator what the hook holds for them before the role (and that balance) moves.
-    function _claimEleos(address hook, address token) internal {
-        (bool due,,,) = IEleosHook(hook).processable(token);
-        if (due) IEleosHook(hook).process(token);
-        if (IEleosHook(hook).book(token).creatorOwed > 0) IEleosHook(hook).payCreator(token);
+    /// @dev Pays the Montra creator what the hook holds for the pool before the role (and that balance) moves.
+    function _claimMontra(V4FeeSource source, address token, address me) internal {
+        (address hook,) = source.hookOf(token);
+        bytes32 id = IMontraToken(token).poolId();
+        if (IMontraHook(hook).tab(id) + IMontraHook(hook).pendingCreator(id) > 0) IMontraHook(hook).claim(id, me);
     }
 
     function _check(address lodestar) internal view {

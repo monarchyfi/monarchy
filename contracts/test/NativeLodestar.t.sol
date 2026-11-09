@@ -19,7 +19,7 @@ import {
     MockDividendHook
 } from "./utils/NativeMocks.sol";
 
-/// @notice Lodestar on a launchpad shaped like Boxa, Kleos and Eleos: fees in native HYPE, one-step or two-step
+/// @notice Lodestar on a launchpad shaped like Volta, ElysPump, Boxa, Kleos and Montra: fees in native HYPE, one-step or two-step
 /// handover, coins that pay holders dividends. The real launchpads are covered by the fork tests.
 contract NativeLodestarTest is Test {
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
@@ -452,6 +452,32 @@ contract NativeLodestarTest is Test {
         oneStep.setCallTarget(address(0));
         l.distribute();
         assertEq(hook.owedOf(address(token)), 0);
+    }
+
+    /// @dev A launchpad that pays the role's fees from another contract (Volta's escrow): the router stores that
+    /// payer at initialize and calls it too, but never a payer the adapter names later.
+    function test_launchpadCallsMayGoToThePayerStoredAtInitialize() public {
+        MockNativeHook escrow = new MockNativeHook();
+        oneStep.setPayer(address(escrow));
+        Lodestar l = _oneStep(address(0));
+        assertEq(l.payer(), address(escrow));
+        escrow.launch(address(token), address(l));
+        hook.accrue{value: 1 ether}(address(token)); // claimCalls looks at the hook's books
+        escrow.accrue{value: 2 ether}(address(token));
+        oneStep.setCallTarget(address(escrow));
+        l.distribute();
+        assertEq(escrow.owedOf(address(token)), 0, "the payer paid the router");
+        assertEq(l.totalHoldersQuote() + l.totalTreasuryQuote() + l.buybackReserve(), 2 ether);
+
+        MockNativeHook other = new MockNativeHook();
+        other.launch(address(token), address(l));
+        other.accrue{value: 1 ether}(address(token));
+        oneStep.setPayer(address(other));
+        oneStep.setCallTarget(address(other));
+        vm.expectEmit(address(l));
+        emit Lodestar.ClaimFailed();
+        l.distribute();
+        assertEq(other.owedOf(address(token)), 1 ether, "a payer named after initialize is never called");
     }
 
     function test_acceptRevertsWithoutAPendingRole() public {

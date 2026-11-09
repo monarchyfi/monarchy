@@ -9,7 +9,7 @@ import {IV4PoolManager, V4PoolKey} from "../src/interfaces/IUniswapV4.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {MockV4PoolManager, MockNativeHook} from "./utils/NativeMocks.sol";
 import {V4FeeSource} from "../src/sources/V4FeeSource.sol";
-import {EleosFeeSource} from "../src/sources/EleosFeeSource.sol";
+import {MontraFeeSource} from "../src/sources/MontraFeeSource.sol";
 import {BoxaFeeSource} from "../src/sources/BoxaFeeSource.sol";
 
 contract V4StateReader {
@@ -183,7 +183,7 @@ contract V4Test is Test {
     }
 
     function test_unknownHookIsUnsupported() public {
-        EleosFeeSource src = new EleosFeeSource(obs, address(this), new address[](0), new uint8[](0));
+        MontraFeeSource src = new MontraFeeSource(obs, address(this), new address[](0), new uint8[](0));
         vm.expectRevert(V4FeeSource.UnsupportedHook.selector);
         src.hookOf(address(token)); // a coin with no hook() at all
         vm.expectRevert(V4FeeSource.QuoteUnsupported.selector);
@@ -192,9 +192,9 @@ contract V4Test is Test {
 
     function test_registryNeedsMatchingLists() public {
         vm.expectRevert(V4FeeSource.BadKind.selector);
-        new EleosFeeSource(obs, address(this), new address[](1), new uint8[](0));
+        new MontraFeeSource(obs, address(this), new address[](1), new uint8[](0));
         vm.expectRevert(V4FeeSource.ZeroAddress.selector);
-        new EleosFeeSource(obs, address(0), new address[](0), new uint8[](0));
+        new MontraFeeSource(obs, address(0), new address[](0), new uint8[](0));
     }
 
     receive() external payable {}

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @notice The subset of Uniswap v4's PoolManager that Monarchy uses, with v4's own ABI. Boxa, Kleos and Eleos all
-/// run the official PoolManager code on Elysium (each launchpad its own deployment). Currencies and hooks are
+/// @notice The subset of Uniswap v4's PoolManager that Monarchy uses, with v4's own ABI. Volta, ElysPump, Boxa,
+/// Kleos and Montra all run the official PoolManager code on Elysium (some share one deployment, some have their own). Currencies and hooks are
 /// plain addresses here (v4 wraps them in user-defined types, which encode the same), and address(0) is native
 /// HYPE. A pool's id is `keccak256(abi.encode(key))`.
 struct V4PoolKey {

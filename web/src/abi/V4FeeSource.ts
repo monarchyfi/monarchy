@@ -432,6 +432,25 @@ export const v4FeeSourceAbi = [
   },
   {
     "type": "function",
+    "name": "payer",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "pendingCreator",
     "inputs": [
       {

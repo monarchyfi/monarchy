@@ -6,7 +6,7 @@ import {INativeBuybackSwapper} from "../../src/interfaces/IBuybackSwapper.sol";
 import {IV4UnlockCallback, V4PoolKey, V4SwapParams} from "../../src/interfaces/IUniswapV4.sol";
 import {MockERC20} from "../../src/mocks/MockERC20.sol";
 
-/// @notice A launchpad hook in the shape of Boxa, Kleos and Eleos: it holds each coin's creator role and pays the
+/// @notice A launchpad hook in the shape of ElysPump, Boxa and Kleos: it holds each coin's creator role and pays the
 /// creator's fees in native HYPE. Works as one-step (`transferCreator`) or two-step (`propose` then `accept`).
 contract MockNativeHook {
     address public constant poolManager = address(0x9999);
@@ -61,7 +61,8 @@ contract MockNativeSource is IFeeSource {
     uint160 public emaPrice = uint160(1 << 96);
     uint128 public liq = 1e24;
     uint256 public cost = 100;
-    address public callTarget; // 0 = the hook; anything else breaks the call-target rule
+    address public callTarget; // 0 = the hook; anything else breaks the call-target rule, unless it is the payer
+    address public payerC; // what `payer` answers
     uint256 public pokes;
 
     constructor(MockNativeHook hook_, Handover mode_) {
@@ -81,6 +82,10 @@ contract MockNativeSource is IFeeSource {
         callTarget = t;
     }
 
+    function setPayer(address p) external {
+        payerC = p;
+    }
+
     function handover() external view returns (Handover) {
         return mode;
     }
@@ -92,6 +97,10 @@ contract MockNativeSource is IFeeSource {
 
     function desk() external pure returns (address) {
         return address(0);
+    }
+
+    function payer(address) external view returns (address) {
+        return payerC;
     }
 
     function creator(address token, bytes32) external view returns (address) {
@@ -183,7 +192,7 @@ contract MockNativeSwapper is INativeBuybackSwapper {
     }
 }
 
-/// @notice A coin that pays holders HYPE dividends inside itself, Eleos and Kleos style: `claimFor(holder)` pushes a
+/// @notice A coin that pays holders HYPE dividends inside itself, Kleos style: `claimFor(holder)` pushes a
 /// holder's dividends to the holder (anyone may call), `claimRewards(holder)` pays them only when the holder calls.
 /// ElysPump style, `claim()` pays the caller's.
 contract MockDividendToken is MockERC20 {

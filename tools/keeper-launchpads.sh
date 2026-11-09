@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The keeper for Monarchy on Eleos, Kleos, Boxa, ElysPump and Ascend v5 (Elysium mainnet), as .github/workflows/distribute.yml
-# runs it every 3 hours. tools/keeper-distribute.sh stays the keeper for the one Ascend router on the testnet.
+# The keeper for Monarchy on Ascend v5, Volta, ElysPump, Boxa, Kleos and Montra (Elysium mainnet), as
+# .github/workflows/distribute.yml runs it every 3 hours. tools/keeper-distribute.sh stays the keeper for the one
+# Ascend router on the testnet.
 #
 #   RPC_URL=... KEEPER_PRIVATE_KEY=... tools/keeper-launchpads.sh [deployments/launchpads/99901.json] [chainId]
 #
@@ -21,8 +22,8 @@
 #      quote with fewer decimals (USDC's 6) it is scaled down to match, at least 1. If the receipt says a holder
 #      payout was parked (HoldersPayoutFailed or TokenHoldersPayoutFailed) it catches up and tries once more;
 #   4. calls `Exile.harvest(coin)` when Exile has a harvest for the coin and a dry run says it brings in at least
-#      MIN_HARVEST_WEI, so the dividends Exile earns on locked coins drip to the lockers. After distribute,
-#      because on Eleos the distribute is what pays the holder share into the coin.
+#      MIN_HARVEST_WEI, so the dividends Exile earns on locked coins drip to the lockers. After distribute, so a
+#      harvest picks up whatever the run's trades and distribute added.
 # - The minimums keep dust from costing a send every run: a native router takes HYPE from anyone, so 1 wei would
 #   otherwise count as work. Below them nothing is lost, it waits for the next run. Defaults: MIN_ROUTE_WEI 1e15
 #   (0.001 HYPE, about ten distributes' gas), MIN_ROUTE_TOKENS 1e18 (one whole coin at 18 decimals), and
@@ -266,8 +267,7 @@ run_router() {
   pid=$(cast to-dec "$(call "$r" "exilePoolId()")")
   catch_up "$pid" || return 1
 
-  # distribute before the harvest: on Eleos the `process` inside distribute is what pays the holder share into
-  # the coin, so the harvest right after picks up this run's dividends instead of waiting for the next run
+  # distribute before the harvest, so the harvest right after picks up anything distribute moved
   distribute_router "$r" "$pid" "$pad" || rc=1
   harvest_token "$token" || rc=1
   return "$rc"

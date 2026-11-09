@@ -110,8 +110,8 @@ abstract contract ForkBase is Test {
         out = s.buyExactIn{value: hypeIn}(keccak256(abi.encode(key)), hypeIn, 0, to);
     }
 
-    /// @dev Buys spread over time, then a pause, so a hook that checks its price average (Eleos's `process` wants
-    /// the tick within 400 of its 10 minute average) sees a market rather than one jump.
+    /// @dev Buys spread over time, then a pause, so a hook or a price observer that checks a price average sees a
+    /// market rather than one jump.
     function _volume(V4FeeSource source, address token, uint256 hypeEach, uint256 n) internal {
         for (uint256 i; i < n; ++i) {
             _buy(source, token, hypeEach, DEAD);

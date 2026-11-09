@@ -14,11 +14,16 @@ const contracts = [
   "IAscendLaunchpad",
   "IListingDesk",
   "MockERC20",
-  // the launchpad adapters' shared shape and the Eleos, Kleos and Boxa hooks, for activations on those launchpads
+  // the launchpad adapters' shared shape and the Kleos and Boxa hooks, for activations on those launchpads
   "V4FeeSource",
-  "ILaunchpadHooks:IEleosHook",
   "ILaunchpadHooks:IKleosHook",
   "ILaunchpadHooks:IBoxaHook",
+  // Volta's adapter (its split and creator NFT) and the NFT that holds a coin's creator role
+  "VoltaFeeSource",
+  "ILaunchpadHooks:IVoltaCreatorNFT",
+  // Montra's adapter and its launch hook (claim, then hand the recipient over)
+  "MontraFeeSource",
+  "ILaunchpadHooks:IMontraHook",
   // ElysPump's adapter (for its receiver share) and its v2 and v3 hooks
   "ElysPumpFeeSource",
   "ILaunchpadHooks:IElysPumpHook",

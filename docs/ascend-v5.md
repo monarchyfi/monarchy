@@ -142,8 +142,8 @@ send Ascend distributes with a 2,000,000 gas floor, and the keeper warns on a `C
 Buybacks go through `AscendV5Swapper`, which rebuilds the pool key from the pool's escrow and swaps exact quote in
 through the launch pool, coins straight to Ascend's BurnSink (v5 coins refuse `0x…dEaD`). The swap cost the floor
 allows for is the pool's own `currentFee`. Lodestar now tries buybacks on pools costing up to 11% (it was 5%), so
-every v5 fee level, builder fee included, gets its buyback. The limit is shared by every launchpad, so Boxa, Kleos
-and Eleos buybacks now also go through at a buy tax of up to 11%. Ascend's EMA only moves on swaps, so after a sharp move
+every v5 fee level, builder fee included, gets its buyback. The limit is shared by every launchpad, so Volta,
+ElysPump, Boxa, Kleos and Montra buybacks also go through at a buy fee of up to 11%. Ascend's EMA only moves on swaps, so after a sharp move
 the floor skips buybacks until trading brings the average back in line.
 
 ## Tests
@@ -166,8 +166,8 @@ may have no picture.
 
 ## Deploying and running it
 
-Ascend v5 is the fourth launchpad in the mainnet scripts (`LAUNCHPAD=ascend`), so it shares the multisig owner,
-Exile, Sandfall and the Lodestar implementation with Eleos, Kleos, Boxa and ElysPump (docs/launchpads.md):
+Ascend v5 is the first launchpad in the mainnet scripts (`LAUNCHPAD=ascend`), so it shares the multisig owner,
+Exile, Sandfall and the Lodestar implementation with Volta, ElysPump, Boxa, Kleos and Montra (docs/launchpads.md):
 
 - `DeployLaunchpads` deploys `AscendV5FeeSource`, an `AscendV5Swapper`, a factory and an `AscendV5Launcher`, and
   records them under `launchpads.ascend` in `deployments/launchpads/99901.json`. The factory never needs to be an
@@ -202,11 +202,13 @@ Ascend waits:
 
 | Launchpad | How the router takes over | Wait |
 | --- | --- | --- |
-| Eleos, Kleos | activate (the router is created), then the creator sends it the role | none |
-| Boxa | the creator proposes the router, then activating creates it and accepts in the same transaction | none |
 | Ascend, launched through Monarchy | the router is the fee wallet from the first trade | none |
 | Ascend, launched on Ascend | propose on the escrow, activate, accept | 48 hours, in Ascend's escrow |
+| Volta | activate (the router is created), then the creator sends it the coin's creator NFT; coins with a creator share of 0 can't be activated | none |
 | ElysPump | activate (the router is created), then the fee receiver makes it the coin's fee receiver (`setFeeReceiver`); coins with a receiver share of 0 can't be activated | none |
+| Boxa | the creator proposes the router, then activating creates it and accepts in the same transaction | none |
+| Kleos | activate (the router is created), then the creator sends it the role | none |
+| Montra | activate (the router is created), claim what the pool holds for you, then make the router the coin's fee recipient (`updateRecipient`); coins that pay their holders can't be activated | none |
 
 ## Not done yet
 

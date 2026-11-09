@@ -15,7 +15,8 @@ interface IHasPoolManager {
 }
 
 /// @title V4FeeSource
-/// @notice Shared base for the adapters of launchpads built as Uniswap v4 hooks on Elysium (Boxa, Kleos, Eleos).
+/// @notice Shared base for the adapters of launchpads built as Uniswap v4 hooks on Elysium (Volta, ElysPump, Boxa,
+/// Kleos, Montra).
 /// Every coin there trades in one pool, native HYPE against the coin, so this base only supports pools whose
 /// currency0 is native HYPE and whose currency1 is the coin; fees arrive as native HYPE.
 ///
@@ -25,7 +26,7 @@ interface IHasPoolManager {
 /// router relies on can't move under it; a router also stores its hook at initialize and only ever calls that one.
 /// A coin whose hook isn't registered can't be activated (`UnsupportedHook`).
 abstract contract V4FeeSource is IFeeSource {
-    /// @dev The burn address all three launchpads count as burned and exclude from dividends.
+    /// @dev The burn address these launchpads count as burned and exclude from dividends.
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     struct HookInfo {
@@ -102,7 +103,7 @@ abstract contract V4FeeSource is IFeeSource {
     // ---------------------------------------------------------------- shared views
 
     /// @notice The registered hook a coin trades through. Reverts `UnsupportedHook` for anything else.
-    function hookOf(address token) public view returns (address hook, HookInfo memory info) {
+    function hookOf(address token) public view virtual returns (address hook, HookInfo memory info) {
         try IHasHook(token).hook() returns (address h) {
             hook = h;
         } catch {
@@ -136,6 +137,11 @@ abstract contract V4FeeSource is IFeeSource {
     }
 
     function desk() external pure returns (address) {
+        return address(0);
+    }
+
+    /// @dev The hook that holds the role pays its fees, except where an adapter says otherwise (Volta).
+    function payer(address) external view virtual returns (address) {
         return address(0);
     }
 

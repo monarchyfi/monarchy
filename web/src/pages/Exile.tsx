@@ -24,7 +24,7 @@ export function ExilePage() {
   usePageTitle("Exile");
   const d = useDeployment();
   const core = useLodestarCore();
-  // a chain with no featured token (Elysium mainnet, where the coins are on Eleos, Kleos, Boxa, Ascend and ElysPump) opens on "Lock a coin"
+  // a chain with no featured token (Elysium mainnet, where the coins are on Ascend, Volta, ElysPump, Boxa, Kleos and Montra) opens on "Lock a coin"
   const featured = isSet(d?.lodestar);
   const [mode, setMode] = useState<"main" | "else">(featured ? "main" : "else");
   const poolId = core.exilePoolId;
@@ -296,7 +296,7 @@ function SomethingElse({ exile }: { exile: Address }) {
   const bad = input !== "" && !token;
   // a token with its own Lodestar has its own Exile reward pool and tiers
   const lodestar = useRouterOf(token);
-  // A coin that pays holders dividends (Eleos, Kleos, Boxa, ElysPump) has a harvest, and Exile only takes its locks in the
+  // A coin that pays holders dividends (ElysPump, Boxa, Kleos) has a harvest, and Exile only takes its locks in the
   // harvest's pool (anything else reverts HarvestPoolOnly), so that pool wins over whatever router the lookup found.
   const harvest = useReadContract({ address: exile, abi: exileAbi, functionName: "harvestOf", args: [token ?? ZERO], query: { enabled: !!token } });
   const harvestPool = harvest.data && harvest.data[0] !== 0n ? harvest.data[0] : undefined;
@@ -354,11 +354,23 @@ function SomethingElse({ exile }: { exile: Address }) {
 }
 
 /** A sliding knob between options. */
-export function Switch({ options, value, onChange }: { options: { key: string; label: string }[]; value: string; onChange: (k: string) => void }) {
+/** A row of options with a sliding knob. `grid` lays many options out as a grid that wraps to rows of three on a
+ * phone (the launchpad picker), with the picked one filled in instead of the knob. */
+export function Switch({
+  options,
+  value,
+  onChange,
+  grid,
+}: {
+  options: { key: string; label: string }[];
+  value: string;
+  onChange: (k: string) => void;
+  grid?: boolean;
+}) {
   const i = Math.max(0, options.findIndex((o) => o.key === value));
   return (
-    <div className="switch" role="tablist">
-      <span className="switch-knob" style={{ width: `calc((100% - 6px) / ${options.length})`, transform: `translateX(${i * 100}%)` }} aria-hidden="true" />
+    <div className={grid ? "switch switch-grid" : "switch"} role="tablist" style={grid ? ({ "--cols": options.length } as React.CSSProperties) : undefined}>
+      {!grid && <span className="switch-knob" style={{ width: `calc((100% - 6px) / ${options.length})`, transform: `translateX(${i * 100}%)` }} aria-hidden="true" />}
       {options.map((o) => (
         <button key={o.key} role="tab" aria-selected={o.key === value} className={o.key === value ? "on" : ""} onClick={() => onChange(o.key)}>
           {o.label}

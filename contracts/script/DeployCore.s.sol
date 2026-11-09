@@ -21,7 +21,7 @@ import {AscendFeeSource} from "../src/sources/AscendFeeSource.sol";
 /// ASCEND_MODE=real (default) points at Ascend on Elysium testnet from env; ASCEND_MODE=mock points at
 /// the contracts DeployMocks wrote to deployments/<chainId>.json.
 /// When DeployLaunchpads already put a core on this chain (deployments/launchpads/<chainId>.json), its Exile, Sandfall
-/// and Lodestar implementation are reused, so Ascend routers and the Eleos, Kleos and Boxa ones share one Exile.
+/// and Lodestar implementation are reused, so Ascend routers and the other launchpads' ones share one Exile.
 contract DeployCore is LaunchpadsBase {
     function run() external {
         string memory mode = vm.envOr("ASCEND_MODE", string("real"));

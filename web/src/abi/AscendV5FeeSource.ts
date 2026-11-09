@@ -363,6 +363,25 @@ export const ascendV5FeeSourceAbi = [
   },
   {
     "type": "function",
+    "name": "payer",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
     "name": "pendingCreator",
     "inputs": [
       {

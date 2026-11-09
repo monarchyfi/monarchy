@@ -14,13 +14,15 @@ import {ILodestar} from "./interfaces/ILodestar.sol";
 import {ILodestarFactory} from "./interfaces/ILodestarFactory.sol";
 
 /// @title Lodestar
-/// @notice Fee router for one launchpad token (Ascend, Boxa, Kleos or Eleos). Once it holds the token's creator
-/// role on the launchpad, every creator fee lands here, and anyone can call `distribute()` to route it:
+/// @notice Fee router for one launchpad token (Ascend, Volta, ElysPump, Boxa, Kleos or Montra). Once it holds the
+/// token's creator role on the launchpad, every creator fee lands here, and anyone can call `distribute()` to
+/// route it:
 ///   - project-token fees are burned, or, if the creator chose so, paid in full to Exile lockers;
 ///   - quote fees (an ERC-20, or native HYPE) are split by the creator's chosen percentages between buyback
 ///     and burn, Exile holder rewards and the Team Treasury (a Sandfall stream).
 /// Everything launchpad specific goes through the launchpad's fee-source adapter, fixed at initialize, and the
-/// router only ever sends launchpad calls to the contract that holds the creator role.
+/// router only ever sends launchpad calls to the contract that holds the creator role (and, on Volta, to the
+/// escrow that pays it).
 /// Split changes wait behind a 12 hour timelock. The creator role can be locked here forever, so the
 /// router can't be swapped out; even then it can move to this token's router on a newer Monarchy
 /// factory, proposed by the steward and announced 7 days ahead. No protocol fee. Deployed as one minimal
@@ -33,7 +35,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// is not tried; the buyback share waits in reserve.
     /// Ascend v5 pools charge a fixed 1% to 10% plus up to 1% to a builder, so this allows up to 11%: the minimum
     /// output already allows for the fee, and a higher fee only makes a sandwich of the small capped buys cost more.
-    /// It applies to every launchpad: a Boxa, Kleos or Eleos buy tax of up to 11% is now bought through too.
+    /// It applies to every launchpad: a buy fee or tax of up to 11% elsewhere is bought through too.
     uint256 public constant MAX_SWAP_COST_BPS = 1_100;
     uint256 public constant MIN_SLIPPAGE_BPS = 100;
     uint256 public constant MAX_SLIPPAGE_BPS = 2_000;
@@ -64,9 +66,13 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     address public factory;
     /// @notice The launchpad's fee-source adapter: views and the calls this router sends as the creator.
     IFeeSource public source;
-    /// @notice The contract that holds the creator role (Ascend's testnet launchpad, an Ascend v5 pool's escrow, a
-    /// Boxa, Kleos or Eleos hook). The only address this router sends launchpad calls to.
+    /// @notice The contract that holds the creator role (Ascend's testnet launchpad, an Ascend v5 pool's escrow,
+    /// Volta's creator NFT, an ElysPump, Boxa, Kleos or Montra hook). With `payer`, the only address this router
+    /// sends launchpad calls to.
     address public hook;
+    /// @notice The contract that pays the role's fees when it isn't `hook` (Volta's fee escrow), else address(0).
+    /// Read from the adapter once, at initialize, like `hook`.
+    address public payer;
     IListingDesk public desk;
     IExile public exile;
     ISandfall public sandfall;
@@ -195,6 +201,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         factory = msg.sender;
         source = IFeeSource(p.source);
         hook = p.hook;
+        payer = p.payer;
         desk = IListingDesk(p.desk);
         exile = IExile(p.exile);
         sandfall = ISandfall(p.sandfall);
@@ -214,8 +221,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     /// launchpad's 48 hour wait has passed, so it is called then, by anyone. The current creator must have proposed
     /// this Lodestar on the launchpad first; that call is the consent, so anyone may finish the hand-off. The
     /// factory calls this at deploy, and it works again later if the role ever left (an expired lock, a hand-out
-    /// the steward reverses), so a token can come back to Monarchy. On one-step launchpads (Kleos, Eleos) the role
-    /// simply arrives and there is nothing to accept.
+    /// the steward reverses), so a token can come back to Monarchy. On one-step launchpads (Volta, ElysPump, Kleos,
+    /// Montra) the role simply arrives and there is nothing to accept.
     /// A creator handing the role back should claim their own fees first: on Ascend whatever is still owed when
     /// the hand-off completes is paid to the new creator, this router, and routed. Accepting also clears the
     /// listing election on Ascend, so the steward enrols again afterwards if wanted.
@@ -225,7 +232,7 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit CreatorAccepted();
     }
 
-    /// @notice Fees on Boxa, Kleos and Eleos arrive in native HYPE. Plain accept, no logic, so a payout landing in
+    /// @notice Fees on Volta, ElysPump, Boxa, Kleos and Montra arrive in native HYPE. Plain accept, no logic, so a payout landing in
     /// the middle of `distribute` can't re-enter anything. Routers quoted in an ERC-20 refuse HYPE, which they
     /// could never route.
     receive() external payable {
@@ -523,8 +530,8 @@ contract Lodestar is ILodestar, ReentrancyGuard {
     }
 
     /// @notice Hand the creator role to `next`: proposed on two-step launchpads (Ascend, Boxa), where `next`
-    /// accepts, and moved at once on one-step launchpads (Kleos, Eleos). Blocked while locked; `next = 0`
-    /// cancels a pending hand-off and is always allowed.
+    /// accepts, and moved at once on one-step launchpads (Volta, ElysPump, Kleos, Montra). Blocked while locked;
+    /// `next = 0` cancels a pending hand-off and is always allowed.
     function transferCreatorOut(address next) external onlySteward {
         if (next != address(0) && block.timestamp < creatorLockedUntil) revert CreatorRoleIsLocked();
         // a hand-off to itself would let anyone "accept" and clear the listing election for nothing
@@ -533,15 +540,15 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         emit CreatorTransferOutStarted(next);
     }
 
-    /// @notice Pass on another coin's creator role that landed here by mistake: one-step launchpads (Kleos,
-    /// Eleos) move a role in one call to any address, so a creator can send it to the wrong router. Only the
+    /// @notice Pass on another coin's creator role that landed here by mistake: one-step launchpads move a role
+    /// in one call to any address, so a creator can send it to the wrong router. Only the
     /// factory calls this, from `rescueDeploy`, which hands the role to that coin's own router in the same
     /// transaction. This router's own role, settings and funds are untouched.
     function releaseForeignRole(address foreignToken, address to) external nonReentrant {
         if (msg.sender != factory) revert OnlyFactory();
         if (foreignToken == address(token)) revert SelfTransfer();
         (bytes32 foreignPoolId, address foreignHook,) = source.resolve(foreignToken, address(quote));
-        _runOn(foreignHook, source.transferOutCalls(foreignToken, foreignPoolId, to), true);
+        _runOn(foreignHook, address(0), source.transferOutCalls(foreignToken, foreignPoolId, to), true);
         emit ForeignRoleReleased(foreignToken, to);
     }
 
@@ -683,22 +690,26 @@ contract Lodestar is ILodestar, ReentrancyGuard {
         }
     }
 
-    /// @dev Send an adapter's call plan as this router. Only to `hook`, never with value. `strict` bubbles the
-    /// first failure (steward and factory actions); otherwise a failure stops the plan and returns false, so
-    /// `distribute` keeps routing.
+    /// @dev Send an adapter's call plan as this router. Only to `hook` or `payer`, never with value. `strict`
+    /// bubbles the first failure (steward and factory actions); otherwise a failure stops the plan and returns
+    /// false, so `distribute` keeps routing.
     function _run(IFeeSource.Call[] memory cs, bool strict) internal returns (bool) {
-        return _runOn(hook, cs, strict);
+        return _runOn(hook, payer, cs, strict);
     }
 
     /// @dev Sends the adapter's calls, each of which must target `target` (the router's own hook, except when
-    /// passing on another coin's role, where it is that coin's hook).
-    function _runOn(address target, IFeeSource.Call[] memory cs, bool strict) internal returns (bool) {
+    /// passing on another coin's role, where it is that coin's hook) or `alt` (the router's payer; 0 = none).
+    function _runOn(address target, address alt, IFeeSource.Call[] memory cs, bool strict)
+        internal
+        returns (bool)
+    {
         for (uint256 i; i < cs.length; ++i) {
-            if (cs[i].target != target) {
+            address to = cs[i].target;
+            if (to != target && (alt == address(0) || to != alt)) {
                 if (strict) revert BadCallTarget();
                 return false;
             }
-            (bool ok, bytes memory ret) = target.call(cs[i].data);
+            (bool ok, bytes memory ret) = to.call(cs[i].data);
             if (!ok) {
                 if (strict) {
                     assembly ("memory-safe") {

@@ -463,6 +463,11 @@ export const lodestarAbi = [
             "internalType": "address"
           },
           {
+            "name": "payer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
             "name": "desk",
             "type": "address",
             "internalType": "address"
@@ -647,6 +652,19 @@ export const lodestarAbi = [
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "payer",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"

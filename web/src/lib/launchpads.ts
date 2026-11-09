@@ -1,8 +1,8 @@
 import { concat, encodeAbiParameters, getContractAddress, keccak256, type Address, type Hex } from "viem";
 
-/** The launchpads on Elysium mainnet Monarchy routes for, in the order the site lists them: Ascend first. (The forge
- * scripts number them differently, by key, so this order is the site's alone.) */
-export const PAD_KEYS = ["ascend", "eleos", "kleos", "boxa", "elyspump"] as const;
+/** The launchpads on Elysium mainnet Monarchy routes for, in the order the site lists them, left to right: Ascend
+ * first. The forge scripts number them in the same order (LaunchpadsBase.s.sol). */
+export const PAD_KEYS = ["ascend", "volta", "elyspump", "boxa", "kleos", "montra"] as const;
 export type PadKey = (typeof PAD_KEYS)[number];
 
 export type QuoteInfo = { address: Address; symbol: string };
@@ -11,7 +11,7 @@ export type PadInfo = {
   key: PadKey;
   name: string;
   site: string;
-  /** Boxa and Ascend propose the router and the router accepts; Eleos, Kleos and ElysPump hand the role over in one call. */
+  /** Boxa and Ascend propose the router and the router accepts; Volta, ElysPump, Kleos and Montra hand the role over in one call. */
   twoStep: boolean;
   /** Ascend v5: the router can only accept 48 hours after it was proposed, so anyone accepts later. */
   delayed?: boolean;
@@ -42,14 +42,15 @@ export const ASCEND_QUOTES: QuoteInfo[] = [
 ];
 
 export const PADS: Record<PadKey, PadInfo> = {
-  eleos: { key: "eleos", name: "Eleos", site: "https://eleos.fun", twoStep: false },
-  kleos: { key: "kleos", name: "Kleos", site: "https://thekleos.xyz", twoStep: false },
-  boxa: { key: "boxa", name: "Boxa", site: "https://boxa.club", twoStep: true },
   ascend: { key: "ascend", name: "Ascend", site: "https://ascendlaunch.xyz", twoStep: true, delayed: true, quotes: ASCEND_QUOTES },
+  volta: { key: "volta", name: "Volta", site: "https://www.volta.family", twoStep: false },
   elyspump: { key: "elyspump", name: "ElysPump", site: "https://elysp.com", twoStep: false },
+  boxa: { key: "boxa", name: "Boxa", site: "https://boxa.club", twoStep: true },
+  kleos: { key: "kleos", name: "Kleos", site: "https://thekleos.xyz", twoStep: false },
+  montra: { key: "montra", name: "Montra", site: "https://montramarkets.xyz", twoStep: false },
 };
 
-/** "Ascend, Eleos, Kleos, Boxa or ElysPump", for the pads a deployment has. */
+/** "Ascend, Volta, ElysPump, Boxa, Kleos or Montra", for the pads a deployment has. */
 export function padNames(list: { info: PadInfo }[], last = "or"): string {
   const names = list.map(({ info }) => info.name);
   return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} ${last} ${names[names.length - 1]}`;
@@ -104,7 +105,7 @@ for (const [path, d] of Object.entries(files)) {
   launchpadsByChain[Number(d.chainId)] = { ...d, chainId: Number(d.chainId), startBlock: Number(d.startBlock) };
 }
 
-/** The launchpads with a factory on this deployment, in the scripts' order. */
+/** The launchpads with a factory on this deployment, in the site's (and the scripts') order. */
 export function padsOf(d?: LaunchpadsDeployment): { info: PadInfo; pad: PadDeployment }[] {
   if (!d) return [];
   return PAD_KEYS.flatMap((k) => {

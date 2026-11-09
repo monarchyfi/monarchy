@@ -541,6 +541,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
 .switch button { position: relative; z-index: 1; background: transparent; border: 0; color: var(--muted); font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: 0.1em; padding: 9px 16px; cursor: pointer; transition: color 0.3s; }
 .switch button.on { color: #000; }
 .switch-knob { position: absolute; top: 3px; bottom: 3px; left: 3px; background: var(--white); transition: transform 0.35s cubic-bezier(0.7, 0, 0.3, 1.25), width 0.35s var(--ease); }
+/* the launchpad picker: one row on a wide screen, rows of three on a phone */
+.switch-grid { display: grid; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); grid-auto-flow: row; gap: 3px; width: 100%; }
+.switch-grid button { padding: 9px 6px; transition: color 0.3s, background 0.3s; }
+.switch-grid button.on { background: var(--white); }
 .swap-in { animation: swap 0.35s var(--ease); }
 @keyframes swap { from { opacity: 0; transform: translateY(8px); clip-path: inset(0 0 100% 0); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
 
@@ -693,6 +697,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--white); width:
   .stats-3 .stat-feature { grid-column: 1 / -1; }
 }
 @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+@media (max-width: 640px) {
+  .switch-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 560px) {
   .page { padding: 28px 16px 56px; gap: 18px; }
   .page-head h1 { font-size: 30px; gap: 12px; }

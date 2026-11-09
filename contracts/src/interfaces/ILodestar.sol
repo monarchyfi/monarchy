@@ -15,7 +15,8 @@ interface ILodestar {
 
     struct InitParams {
         address source; // the launchpad's IFeeSource adapter
-        address hook; // the contract that holds the creator role; the only address the router sends launchpad calls to
+        address hook; // the contract that holds the creator role; with `payer`, the only addresses the router calls
+        address payer; // the contract that pays the role's fees when it isn't `hook` (Volta), else address(0)
         address desk; // the launchpad's listing desk, or address(0)
         address exile;
         address sandfall;

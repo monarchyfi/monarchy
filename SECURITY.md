@@ -34,6 +34,8 @@ Five internal security reviews have run. Each finding was shown with a proof-of-
 
   The fourth Low concerns the website's activation page, which takes the router address from the RPC; its fix belongs with the website support for these launchpads. The integration still needs the third-party audit before mainnet. [docs/launchpads.md](docs/launchpads.md) lists what the factory owner can do and the known limits.
 
+- **Not reviewed yet (November 9, 2026):** the Volta and Montra adapters, and Lodestar's second call target (`payer`, which the router reads from the adapter once at initialize, for Volta's separate fee escrow). Eleos support was removed the same day. These changes are covered by unit tests, fork tests against the real launchpads and the mainnet rehearsal, but no security pass has looked at them.
+
 ## Design guarantees
 
 See the security model in the [README](README.md#security-model) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

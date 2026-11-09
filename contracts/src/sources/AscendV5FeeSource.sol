@@ -86,6 +86,11 @@ contract AscendV5FeeSource is IFeeSource {
         return address(0);
     }
 
+    /// @dev The contract that holds the role pays its fees.
+    function payer(address) external pure returns (address) {
+        return address(0);
+    }
+
     /// @notice Ascend's community-takeover registry for the pool, or address(0) when the pool did not opt in. When
     /// set, an approved takeover replaces the escrow's recipient (this router included) after the registry's notice.
     function takeoverRegistry(bytes32 poolId) external view returns (address) {

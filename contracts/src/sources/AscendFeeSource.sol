@@ -55,6 +55,11 @@ contract AscendFeeSource is IFeeSource {
         return address(_desk);
     }
 
+    /// @dev The contract that holds the role pays its fees.
+    function payer(address) external pure returns (address) {
+        return address(0);
+    }
+
     function creator(address, bytes32 poolId) external view returns (address) {
         return launchpad.poolCreator(poolId);
     }

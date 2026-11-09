@@ -10,7 +10,7 @@ import {V4State} from "./libraries/V4State.sol";
 /// Anyone may `poke` a pool; every router does at the start of `distribute`, and the keeper does too.
 ///
 /// Each poke records the spot price, and the average folds in the previous observation weighted by how long it
-/// held, up to `WINDOW` (a time-weighted EMA, the way Eleos's hook keeps its own). An observation made in this
+/// held, up to `WINDOW` (a time-weighted EMA). An observation made in this
 /// second has no weight yet, so a swap and a buyback in one transaction (or one block) can't move the average that
 /// prices that buyback; to move it an attacker has to hold a price across time, against arbitrage and the coin's
 /// tax. Until a pool has been watched for `WINDOW`, `ema` is 0, which Lodestar reads as "no buyback yet".

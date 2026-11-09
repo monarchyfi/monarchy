@@ -5,10 +5,10 @@ import {LaunchpadsBase} from "./LaunchpadsBase.s.sol";
 import {console2} from "forge-std/Script.sol";
 import {Exile} from "../src/Exile.sol";
 
-/// @notice Step 2 of 2: makes the Eleos, Kleos, Boxa and ElysPump factories Exile registrars once their 12 hour proposals
+/// @notice Step 2 of 2: makes the ElysPump, Boxa and Kleos factories Exile registrars once their 12 hour proposals
 /// have matured. `addRegistrar` is permissionless after the timelock, so any funded key can run this (PRIVATE_KEY).
-/// Routers can activate from then on. Ascend v5's factory never needs the role (its coins pay no holder dividends),
-/// so its routers can activate as soon as DeployLaunchpads has run.
+/// Their routers can activate from then on. The Ascend v5, Volta and Montra factories never need the role (their
+/// routers name no harvest), so their routers can activate as soon as DeployLaunchpads has run.
 contract FinishLaunchpads is LaunchpadsBase {
     function run() external {
         Launchpads memory d = _lpLoad();

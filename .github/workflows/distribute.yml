@@ -2,7 +2,7 @@ name: Distribute
 
 # Keeper: calls distribute() on the Lodestar in deployments/99801.json every 3 hours, so fees reach
 # holders in small, steady payouts and never pile up into one big payout worth timing a lock for.
-# A second job does the same on Elysium mainnet for every router the Eleos, Kleos and Boxa factories in
+# A second job does the same on Elysium mainnet for every router the launchpad factories in
 # deployments/launchpads/99901.json have made, and harvests the dividends Exile earns on locked coins
 # (tools/keeper-launchpads.sh). It has its own key (MAINNET_KEEPER_PRIVATE_KEY) and RPC (the MAINNET_RPC_URL
 # repository variable) and is skipped until both are set and the deployments file exists.

@@ -20,9 +20,9 @@ interface ILodestarToken {
 ///   3. Here: `deploy(params)`. In one transaction this creates the router, its Exile holder-rewards
 ///      pool and its Sandfall Team Treasury stream, accepts the creator role, optionally enrols the
 ///      listing set-aside and, if the dev chose so, locks the creator role to the router forever.
-/// On a one-step launchpad (Kleos, Eleos) the order flips, because the role moves in one call and nothing
-/// on chain would prove who sent it: `deploy(params)` first, then `transferCreator(token, router)` on the
-/// launchpad. The router earns from the moment the role arrives.
+/// On a one-step launchpad (Volta, ElysPump, Kleos, Montra) the order flips, because the role moves in one call
+/// and nothing on chain would prove who sent it: `deploy(params)` first, then the launchpad's own hand-over to
+/// the router. The router earns from the moment the role arrives.
 /// The dev keeps the dev-buy tokens; only the creator fee stream moves to the router.
 contract LodestarFactory {
     struct DeployParams {
@@ -242,6 +242,7 @@ contract LodestarFactory {
         }
         ip.source = address(source);
         ip.hook = t.hook;
+        ip.payer = source.payer(p.token);
         ip.desk = desk;
         ip.exile = address(exile);
         ip.sandfall = address(sandfall);

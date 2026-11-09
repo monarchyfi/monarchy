@@ -27,15 +27,15 @@ import {IExile} from "./interfaces/IExile.sol";
 /// time: unlock times are rounded up to the hour, points expiring in each hour are tracked in a
 /// bucket, and the pool removes them as it passes each hour boundary.
 ///
-/// A pool's reward token can be native HYPE (address(0)), which is how fees arrive on Boxa, Kleos and Eleos.
+/// A pool's reward token can be native HYPE (address(0)), which is how fees arrive on the v4 launchpads.
 ///
 /// Harvest: coins on those launchpads can pay their holders HYPE dividends by balance, and Exile's balance earns
 /// them for every locked coin. For a token whose harvest is set, anyone can call `harvest(token)`: Exile claims
 /// those dividends for itself and pays what arrives to the token's harvest pool, where it drips to lockers like
-/// any other reward. HYPE a token pushes to Exile on its own (a permissionless `claimFor(exile)`) is counted per
+/// any other reward. HYPE a token pushes to Exile on its own (a permissionless claim made for Exile) is counted per
 /// sender and joins that token's next harvest. Only registrars (Monarchy's factories, added by the owner behind a
 /// 12 hour timelock) name harvest pools, and the call has one of three fixed shapes, never with value:
-/// `claimFor(exile)` or `claimRewards(exile)` on the token itself (Eleos, Kleos), or
+/// `claimFor(exile)`, `claimRewards(exile)` (Kleos) or `claim()` (ElysPump) on the token itself, or
 /// `claimRewards(token, exile)` on the token's hook (Boxa). The owner can never move a locked token or a reward.
 contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     using SafeERC20 for IERC20;
@@ -127,8 +127,8 @@ contract Exile is IExile, ReentrancyGuard, IERC721Receiver, IERC1155Receiver {
     uint256 internal constant ACC_PREC = 1e18;
     uint256 internal constant REWARD = 0; // stream paid in the pool's reward token
     uint256 internal constant STAKE = 1; // stream paid in the stake token
-    /// @dev The dividend claims a harvest may call. On the stake token, as `selector(address(this))`: Eleos coins'
-    /// `claimFor(holder)` and Kleos coins' `claimRewards(holder)`; or with no argument, ElysPump coins' `claim()`,
+    /// @dev The dividend claims a harvest may call. On the stake token, as `selector(address(this))`: a coin's
+    /// `claimFor(holder)` (no supported launchpad uses it today) and Kleos coins' `claimRewards(holder)`; or with no argument, ElysPump coins' `claim()`,
     /// which pays the caller. On another contract (the coin's hook), as `selector(stakeToken, address(this))`: Boxa
     /// hooks' `claimRewards(token, recipient)`, which pays the caller's dividends in that token to the recipient.
     bytes4 internal constant CLAIM_FOR = bytes4(keccak256("claimFor(address)"));

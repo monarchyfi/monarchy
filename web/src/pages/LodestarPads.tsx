@@ -11,11 +11,14 @@ import {
   elysPumpFeeSourceAbi,
   iBoxaHookAbi,
   iElysPumpHookAbi,
-  iEleosHookAbi,
   iKleosHookAbi,
+  iMontraHookAbi,
+  iVoltaCreatorNFTAbi,
   lodestarAbi,
   lodestarFactoryAbi,
+  montraFeeSourceAbi,
   v4FeeSourceAbi,
+  voltaFeeSourceAbi,
 } from "../abi";
 import { PageMark } from "../components/NavGlyphs";
 import { TxButton } from "../components/Tx";
@@ -42,7 +45,7 @@ import { AscendLaunch, CoinProfileCard, TwoWays } from "./AscendLaunch";
 /** IFeeSource.Handover.OneStep */
 const ONE_STEP = 1;
 
-/** The Lodestar page on a chain with Ascend v5, Eleos, Kleos, Boxa and ElysPump: the creator picks the launchpad and
+/** The Lodestar page on a chain with Ascend v5, Volta, ElysPump, Boxa, Kleos and Montra: the creator picks the launchpad and
  * pastes a coin, the page checks the coin really is on that launchpad, then shows its router or the activation steps
  * that launchpad needs. */
 export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
@@ -97,7 +100,7 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
           <Card title="Coin">
             <div className="field">
               <span className="field-label">Launchpad</span>
-              <Switch options={list.map(({ info }) => ({ key: info.key, label: info.name }))} value={choice} onChange={(k) => setChoice(k as PadKey)} />
+              <Switch grid options={list.map(({ info }) => ({ key: info.key, label: info.name }))} value={choice} onChange={(k) => setChoice(k as PadKey)} />
             </div>
             <p className="muted small field-help">Pick the launchpad your coin was launched on.</p>
             <label className="field">
@@ -122,9 +125,22 @@ type Handover = { pad: string; how: string; wait: "instant" | "none" | "48 hours
 
 /** How the router takes over a coin's creator fees on each launchpad, and how long that takes. */
 const HANDOVERS: Record<PadKey, Handover[]> = {
-  eleos: [{ pad: "Eleos", how: "Activate, which creates the router, then send it the coin's creator role from your wallet.", wait: "instant" }],
+  volta: [
+    {
+      pad: "Volta",
+      how: "Activate, which creates the router, then send it the coin's creator NFT from your wallet. Only coins that pay their creator a share can be activated.",
+      wait: "instant",
+    },
+  ],
   kleos: [{ pad: "Kleos", how: "Activate, which creates the router, then send it the coin's creator role from your wallet.", wait: "instant" }],
   boxa: [{ pad: "Boxa", how: "Propose the router as creator from your wallet, then activate: the router is created and accepts in the same transaction.", wait: "instant" }],
+  montra: [
+    {
+      pad: "Montra",
+      how: "Activate, which creates the router, claim what you've earned, then make the router the coin's fee recipient from your wallet. Coins that pay their holders can't be activated.",
+      wait: "instant",
+    },
+  ],
   ascend: [
     { pad: "Ascend, launched here", how: "Launch on Ascend from this page. The router is the coin's fee wallet from the first trade, so there's nothing to hand over.", wait: "none" },
     {
@@ -185,24 +201,32 @@ type Found = {
   router?: Address;
   predicted?: Address;
   poolId?: Hex;
-  /** the pair's quote: native HYPE (ZERO) on Eleos, Kleos, Boxa and ElysPump, the ERC-20 the pool was found with on Ascend */
+  /** the pair's quote: native HYPE (ZERO) on the v4 launchpads, the ERC-20 the pool was found with on Ascend */
   quote: Address;
   /** the coin trades through a hook this launchpad's adapter knows, whatever it is quoted in */
   onHook: boolean;
-  /** ElysPump: a HYPE-paired coin that pays its fee receiver nothing, so there is nothing for a router to route */
-  noReceiverShare: boolean;
+  /** ElysPump or Volta: a coin that pays its fee receiver (creator) nothing, so there is nothing for a router to route */
+  noShare: boolean;
+  /** Montra: the coin pays its creator side to its holders, and Montra never lets such a coin change recipient */
+  paidToHolders: boolean;
   /** the network's answer for the router address disagrees with the one worked out from the deployments file */
   mismatch: boolean;
 };
 
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-type Probe = { i: number; kind: "of" | "predict" | "hook" | "share"; quote: Address };
+type Probe = { i: number; kind: "of" | "predict" | "hook" | "share" | "recipient"; quote: Address };
+
+/** Montra's name for a coin's holders as its fee recipient (MontraFeeSource.HOLDERS); the coin itself means the same. */
+const MONTRA_HOLDERS = "0x0000000000000000000000000000000000000001";
+/** A pool id for adapters that work it out themselves from the coin. */
+const ZERO_ID: Hex = `0x${"0".repeat(64)}`;
 
 /** The reads that place a coin: per launchpad its router (`lodestarOf`) and `predict`, which only the coin's own
- * launchpad answers without reverting. Eleos, Kleos, Boxa and ElysPump are asked for the HYPE pair plus `hookOf`,
- * which a coin on a known hook answers even when it is quoted in something else; ElysPump also for the coin's
- * receiver share, which says why `predict` refused a HYPE-paired coin. Ascend is asked for each of its quote assets. */
+ * launchpad answers without reverting. The v4 launchpads are asked for the HYPE pair plus `hookOf`, which a coin on
+ * a known hook answers even when it is quoted in something else; ElysPump and Volta also for the coin's receiver
+ * (creator) share and Montra for the pool's recipient, which say why `predict` refused a HYPE-paired coin. Ascend is
+ * asked for each of its quote assets. */
 function probesOf(list: { info: PadInfo }[]): Probe[] {
   return list.flatMap(({ info }, i): Probe[] =>
     info.quotes
@@ -211,7 +235,8 @@ function probesOf(list: { info: PadInfo }[]): Probe[] {
           { i, kind: "of", quote: ZERO },
           { i, kind: "predict", quote: ZERO },
           { i, kind: "hook", quote: ZERO },
-          ...(info.key === "elyspump" ? [{ i, kind: "share" as const, quote: ZERO }] : []),
+          ...(info.key === "elyspump" || info.key === "volta" ? [{ i, kind: "share" as const, quote: ZERO }] : []),
+          ...(info.key === "montra" ? [{ i, kind: "recipient" as const, quote: ZERO }] : []),
         ],
   );
 }
@@ -225,7 +250,9 @@ function PadToken({ pads, token, choice, onSwitch }: { pads: LaunchpadsDeploymen
       const { pad } = list[i];
       if (kind === "of") return { address: pad.factory, abi: lodestarFactoryAbi, functionName: "lodestarOf", args: [token] } as const;
       if (kind === "predict") return { address: pad.factory, abi: lodestarFactoryAbi, functionName: "predict", args: [token, quote] } as const;
+      if (kind === "share" && list[i].info.key === "volta") return { address: pad.source, abi: voltaFeeSourceAbi, functionName: "creatorShareBps", args: [token] } as const;
       if (kind === "share") return { address: pad.source, abi: elysPumpFeeSourceAbi, functionName: "receiverShareBps", args: [token] } as const;
+      if (kind === "recipient") return { address: pad.source, abi: montraFeeSourceAbi, functionName: "creator", args: [token, ZERO_ID] } as const;
       return { address: pad.source, abi: v4FeeSourceAbi, functionName: "hookOf", args: [token] } as const;
     }),
     query: POLL.query,
@@ -238,6 +265,7 @@ function PadToken({ pads, token, choice, onSwitch }: { pads: LaunchpadsDeploymen
     const pr = mine.find(({ p, res }) => p.kind === "predict" && res.status === "success");
     const hk = mine.find(({ p }) => p.kind === "hook")?.res;
     const share = mine.find(({ p }) => p.kind === "share")?.res;
+    const recipient = mine.find(({ p }) => p.kind === "recipient")?.res;
     const router = of?.status === "success" && isSet(of.result as Address) ? (of.result as Address) : undefined;
     const p = pr?.res.status === "success" ? (pr.res.result as readonly [Address, Hex]) : undefined;
     // the address the role goes to is never the RPC's word: derive it from the deployments file and the pool id, and
@@ -249,8 +277,9 @@ function PadToken({ pads, token, choice, onSwitch }: { pads: LaunchpadsDeploymen
     const expected = poolId ? routerAddress(pads.lodestarImpl, pad.factory, poolId) : undefined;
     const mismatch =
       !!expected && (!same(p?.[0], expected) || (!!router && !same(router, expected)) || (!!localId && localId.toLowerCase() !== p?.[1].toLowerCase()));
-    const noReceiverShare = share?.status === "success" && share.result === 0n;
-    return { info, pad, router, predicted: expected, poolId, quote: pr?.p.quote ?? ZERO, onHook: hk?.status === "success", noReceiverShare, mismatch };
+    const noShare = share?.status === "success" && share.result === 0n;
+    const paidToHolders = recipient?.status === "success" && (same(recipient.result as Address, token) || same(recipient.result as Address, MONTRA_HOLDERS));
+    return { info, pad, router, predicted: expected, poolId, quote: pr?.p.quote ?? ZERO, onHook: hk?.status === "success", noShare, paidToHolders, mismatch };
   });
   // the RPC failing every read looks like "on no launchpad"; say so instead
   if (results.every((x) => x.status === "failure" && !/revert/i.test(String(x.error))))
@@ -267,11 +296,23 @@ function PadToken({ pads, token, choice, onSwitch }: { pads: LaunchpadsDeploymen
   const elsewhere = found.find((f) => f !== target && (f.router || f.predicted || f.onHook));
   const onTarget = !!(target.router || target.predicted);
   if (!onTarget) {
-    if (target.noReceiverShare)
+    if (target.noShare)
       return (
         <>
           <PadCheck name={name} />
-          <NoReceiverShare name={name} />
+          <NoShare name={name} volta={target.info.key === "volta"} />
+        </>
+      );
+    if (target.paidToHolders)
+      return (
+        <>
+          <PadCheck name={name} />
+          <Card>
+            <Empty title="This coin pays its fees to its holders">
+              It's on {name}, but its creator fees go to its holders, and {name} never lets a coin that pays its holders change its fee
+              recipient. A Lodestar can't take it over.
+            </Empty>
+          </Card>
         </>
       );
     if (target.onHook)
@@ -350,13 +391,14 @@ function PadCheck({ name, quote, children }: { name: string; quote?: string; chi
   );
 }
 
-/** An ElysPump coin launched with a fee receiver share of 0: its fees go to the platform, its holders and its own
- * buybacks, so a router would receive nothing. The share is fixed at launch. */
-function NoReceiverShare({ name }: { name: string }) {
+/** An ElysPump coin launched with a fee receiver share of 0, or a Volta coin with a creator share of 0: its fees go to
+ * the platform, its holders and its own buybacks, so a router would receive nothing. The shares are fixed at launch. */
+function NoShare({ name, volta }: { name: string; volta: boolean }) {
+  const who = volta ? "creator" : "fee receiver";
   return (
     <Card>
-      <Empty title="This coin pays its fee receiver nothing">
-        It's on {name}, but it was launched with a fee receiver share of 0%: its trading fees go to {name}, its holders and its own
+      <Empty title={`This coin pays its ${who} nothing`}>
+        It's on {name}, but it was launched with a {who} share of 0%: its trading fees go to {name}, its holders and its own
         buybacks, so a Lodestar would have nothing to route. The shares are fixed at launch, so this coin can't be activated.
       </Empty>
     </Card>
@@ -405,18 +447,12 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
   const code = useBytecode({ address: predicted, query: POLL.query });
   const creator = r.data?.[1];
   const hook = r.data?.[5][0];
-  // Eleos holds a coin's unpaid creator fees per coin, so they would move with the role: offer to pay them out first
-  const eleos = info.key === "eleos";
-  // ElysPump calls the creator role the coin's fee receiver
+  // Montra keeps a pool's unclaimed fees with the pool, so they would move with the role: offer to claim them first
+  const montra = info.key === "montra";
+  // ElysPump calls the creator role the coin's fee receiver; Montra, the pool's fee recipient
   const elyspump = info.key === "elyspump";
-  const el = useReadContracts({
-    allowFailure: false,
-    contracts: [
-      { address: hook, abi: iEleosHookAbi, functionName: "processable", args: [token] },
-      { address: hook, abi: iEleosHookAbi, functionName: "book", args: [token] },
-    ],
-    query: { enabled: eleos && !!hook, ...POLL.query },
-  });
+  // Volta: the creator role is an NFT, sent to the router like any ERC-721
+  const volta = info.key === "volta";
   // ElysPump: the fee receiver's share of each trade's fee, after the platform's 30%
   const share = useReadContract({
     address: pad.source,
@@ -425,6 +461,17 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
     args: [token],
     query: { enabled: elyspump, ...POLL.query },
   });
+  // Volta: the creator NFT and its id, and the creator's share of each trade's fee after the protocol's 30%
+  const vo = useReadContracts({
+    allowFailure: false,
+    contracts: [
+      { address: pad.source, abi: voltaFeeSourceAbi, functionName: "creatorNft", args: [token] },
+      { address: pad.source, abi: voltaFeeSourceAbi, functionName: "creatorShareBps", args: [token] },
+    ],
+    query: { enabled: volta, ...POLL.query },
+  });
+  // Montra: a recipient that is a contract (a splitter) can't call the factory, so a wallet can't activate the coin
+  const recipientCode = useBytecode({ address: creator, query: { enabled: montra && !!creator } });
   const owed = useReadContract({
     ...src,
     functionName: "owed",
@@ -439,7 +486,7 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
   const s = useActivationSettings();
   const [route, setRoute] = useState<"default" | "v4">("default");
 
-  if (!r.data || code.isLoading) return <LoadingCard />;
+  if (!r.data || code.isLoading || (volta && !vo.data) || (montra && recipientCode.isLoading)) return <LoadingCard />;
   const [handover, , pending, holdersBps, [, claimSelector], [, hookInfo], registrar, defaultSwapper, setAt, delay] = r.data;
   const twoStep = handover !== ONE_STEP;
   const deployed = !!code.data && code.data !== "0x";
@@ -481,13 +528,29 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
         </Empty>
       </Card>
     );
+  if (montra && !deployed && !same(creator, predicted) && !!recipientCode.data && recipientCode.data !== "0x")
+    return (
+      <Card>
+        <Empty title="This coin's fees go to a contract">
+          Its fee recipient on {info.name} is a contract (a fee splitter, say), not a wallet. Only the recipient can hand the fees over, and a
+          contract can't activate a Lodestar, so this coin can't be activated from here. Recipient: <Addr address={creator} />
+        </Empty>
+      </Card>
+    );
   const notReady = claimSelector !== "0x00000000" && !registrar;
 
   const handedOver = twoStep ? same(pending, predicted) : same(creator, predicted);
-  const eleosDue = eleos && !!el.data?.[0][0];
-  const eleosOwed = eleos ? (el.data?.[1].creatorOwed ?? 0n) : 0n;
   const owedQuote = owed.data?.[1] ?? 0n;
-  const youOnly = !you ? (elyspump ? "Only the coin's fee receiver can do this" : "Only the coin's creator can do this") : undefined;
+  const [nft, nftId] = vo.data?.[0] ?? [];
+  const youOnly = !you
+    ? elyspump
+      ? "Only the coin's fee receiver can do this"
+      : montra
+        ? "Only the coin's fee recipient can do this"
+        : volta
+          ? "Only the holder of the coin's creator NFT can do this"
+          : "Only the coin's creator can do this"
+    : undefined;
 
   const deployStep = (
     <>
@@ -555,50 +618,68 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
     });
     steps.push({ title: "Activate", done: deployed, body: deployStep });
   } else {
-    if (eleos && !deployed)
+    steps.push({ title: "Activate", done: deployed, body: deployStep });
+    if (montra)
       steps.push({
-        title: "Collect what you've earned (optional)",
-        done: !eleosDue && eleosOwed === 0n,
+        title: "Claim what you've earned (optional)",
+        done: handedOver || owedQuote === 0n,
         body: (
           <>
             <p className="muted small">
-              Eleos keeps a coin's unpaid creator fees with the coin, so they move to the router with the role. Collect them first to keep
-              them, or skip this to send them to your lockers.{owedQuote > 0n ? <> Owed to you now: <Amt value={owedQuote} decimals={18} symbol="HYPE" />.</> : null}
+              {info.name} keeps a coin's unclaimed creator fees with the coin, so they move to the router with the role. Claim them first to
+              keep them, or skip this to send them to your lockers.
+              {owedQuote > 0n ? (
+                <>
+                  {" "}
+                  Waiting for you now: <Amt value={owedQuote} decimals={18} symbol="HYPE" />.
+                </>
+              ) : null}
             </p>
-            {eleosDue ? (
-              <TxButton headroom disabledReason={youOnly} request={() => hook && { address: hook, abi: iEleosHookAbi, functionName: "process", args: [token] }}>
-                Split the pending tax
-              </TxButton>
-            ) : (
-              <TxButton headroom disabledReason={youOnly ?? (eleosOwed === 0n ? "Nothing to collect" : undefined)} request={() => hook && { address: hook, abi: iEleosHookAbi, functionName: "payCreator", args: [token] }}>
-                Pay me my creator fees
-              </TxButton>
-            )}
+            <TxButton
+              headroom
+              disabledReason={youOnly ?? (handedOver ? "Done" : owedQuote === 0n ? "Nothing to claim" : undefined)}
+              request={() => hook && creator && { address: hook, abi: iMontraHookAbi, functionName: "claim", args: [poolId, creator] }}
+            >
+              Claim my fees
+            </TxButton>
           </>
         ),
       });
-    steps.push({ title: "Activate", done: deployed, body: deployStep });
     steps.push({
-      title: elyspump ? "Make the router the coin's fee receiver" : "Hand the creator role to the router",
+      title: elyspump
+        ? "Make the router the coin's fee receiver"
+        : montra
+          ? "Make the router the coin's fee recipient"
+          : volta
+            ? "Send the creator NFT to the router"
+            : "Hand the creator role to the router",
       done: handedOver,
       body: (
         <>
           <p className="muted small">
-            On {info.name}'s hook, once the router exists (never before: a role sent to an empty address can only be recovered by Monarchy).
-            The router earns from the moment the role arrives.
+            {volta ? `On ${info.name}'s creator NFT` : `On ${info.name}'s hook`}, once the router exists (never before: a role sent to an empty
+            address can only be recovered by Monarchy). The router earns from the moment the role arrives.
             {info.key === "kleos" || elyspump ? ` Fees you earned before stay yours to claim on ${info.name}.` : ""}
+            {volta ? ` Fees ${info.name} has already credited to you stay yours to claim on ${info.name}.` : ""}
+            {montra && owedQuote > 0n ? " What you haven't claimed goes with it." : ""}
           </p>
           <TxButton
             headroom
             disabledReason={youOnly ?? (!deployed ? "Activate first" : handedOver ? "Done" : undefined)}
             request={() =>
-              hook &&
-              (elyspump
-                ? { address: hook, abi: iElysPumpHookAbi, functionName: "setFeeReceiver", args: [token, predicted] }
-                : { address: hook, abi: info.key === "kleos" ? iKleosHookAbi : iEleosHookAbi, functionName: "transferCreator", args: [token, predicted] })
+              volta
+                ? nft && creator && nftId !== undefined
+                  ? { address: nft, abi: iVoltaCreatorNFTAbi, functionName: "transferFrom", args: [creator, predicted, nftId] }
+                  : undefined
+                : hook &&
+                  (elyspump
+                    ? { address: hook, abi: iElysPumpHookAbi, functionName: "setFeeReceiver", args: [token, predicted] }
+                    : montra
+                      ? { address: hook, abi: iMontraHookAbi, functionName: "updateRecipient", args: [poolId, predicted] }
+                      : { address: hook, abi: iKleosHookAbi, functionName: "transferCreator", args: [token, predicted] })
             }
           >
-            {elyspump ? "Make the router the fee receiver" : "Hand over creator role"}
+            {elyspump || montra ? "Make the router the fee " + (elyspump ? "receiver" : "recipient") : volta ? "Send the creator NFT" : "Hand over creator role"}
           </TxButton>
           <RouterCheck predicted={predicted} />
         </>
@@ -610,10 +691,15 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
     <Card title="Activate Lodestar" right={<Badge tone="grey">{info.name}</Badge>}>
       <div className="summary">
         <Row k="Coin" v={<>{sym && <b className="text">{sym}</b>} <Addr address={token} /></>} />
-        <Row k={`${elyspump ? "Fee receiver" : "Creator"} on ${info.name}`} v={<><Addr address={creator} /> {you && <Badge tone="green">you</Badge>}</>} />
+        <Row
+          k={`${elyspump ? "Fee receiver" : montra ? "Fee recipient" : volta ? "Creator NFT holder" : "Creator"} on ${info.name}`}
+          v={<><Addr address={creator} /> {you && <Badge tone="green">you</Badge>}</>}
+        />
+        {volta && nftId !== undefined && <Row k="Creator NFT" v={<>#{nftId.toString()} <Addr address={nft} /></>} />}
         <Row k="Router address" v={<><Addr address={predicted} /> {deployed && <Badge tone="green">deployed</Badge>}</>} />
         <Row k="Hook" v={<Addr address={hook} />} />
         {elyspump && share.data !== undefined && <Row k="The router's share of each trade's fee" v={pct((share.data * 7n) / 10n)} />}
+        {volta && vo.data && <Row k="The router's share of each trade's fee" v={pct((vo.data[1] * 7n) / 10n)} />}
       </div>
       {notReady && <p className="warn small">Monarchy is still finishing its setup on {info.name}. Activations open within a day of launch.</p>}
       <ol className="steps">
@@ -634,7 +720,7 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
 function RouterCheck({ predicted }: { predicted: Address }) {
   return (
     <p className="muted small">
-      Sends the role to <Addr address={predicted} /> (<span className="mono">{predicted}</span>), worked out from Monarchy's deployments file. Your
+      Sends the role to <Addr address={predicted} /> (<span className="mono" style={{ overflowWrap: "anywhere" }}>{predicted}</span>), worked out from Monarchy's deployments file. Your
       wallet should show the same address.
     </p>
   );

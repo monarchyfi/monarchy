@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
-# Dress rehearsal of the Eleos, Kleos, Boxa and ElysPump rollout on a local anvil fork of Elysium mainnet. Sends nothing to
-# the real chain: anvil forks it into a local node and every transaction goes there.
+# Dress rehearsal of the Volta, ElysPump, Boxa, Kleos and Montra rollout on a local anvil fork of Elysium mainnet.
+# Sends nothing to the real chain: anvil forks it into a local node and every transaction goes there. (Ascend v5
+# has its own rehearsal in its fork tests: its 48 hour wait and escrow don't fit this script's one pass.)
 #
-#   ELYSIUM_RPC_URL=https://rpc.eleos.fun [FORK_BLOCK=358639] tools/rehearse-launchpads.sh
+#   ELYSIUM_RPC_URL=https://rpc.eleos.fun [FORK_BLOCK=2845000] tools/rehearse-launchpads.sh
 #
 # 1. DeployLaunchpads with anvil's first key, an anvil EOA standing in for the multisig (ALLOW_EOA_OWNER=true).
 # 2. Twelve hours later FinishLaunchpads, and the stand-in multisig accepts Exile.
-# 3. One coin per launchpad, each with a holder share so the harvest runs: TST2255 (Eleos), BULL (Kleos hook A),
-#    CHUD (Boxa pairs hook), MIX (ElysPump v2 hook). Each coin's creator role is moved (impersonated) to an anvil
-#    key, which then runs ActivateLaunchpad as the creator would. The Kleos router gets the V4Swapper (SWAPPER=v4,
-#    phase 2); the others keep the buyback share in reserve (phase 1).
+# 3. One coin per launchpad: ETF (Volta), MIX (ElysPump v2 hook), CHUD (Boxa pairs hook), BULL (Kleos hook A) and
+#    ELYSA (Montra). MIX, CHUD and BULL pay their holders dividends, so Exile's harvest runs for them; Volta pays
+#    holders to wallets only and Montra's coin pays its creator side to one recipient, so those two have no
+#    harvest. Each coin's creator role is moved (impersonated) to an anvil key, which then runs ActivateLaunchpad
+#    as the creator would (on Montra that claims the fees the role brought with it first). The Kleos router gets
+#    the V4Swapper (SWAPPER=v4, phase 2); the others keep the buyback share in reserve (phase 1).
 # 4. A locker buys and locks each coin in Exile, traders make volume, and tools/keeper-launchpads.sh runs.
 # 5. Checks that every router routed fees, that the Kleos router bought back and burned and the others kept the
-#    buyback share, that Exile harvested dividends on all four, and that a second keeper run right after leaves
-#    the phase 1 routers alone and doesn't buy back again.
+#    buyback share, that Exile harvested dividends on the three dividend coins, and that a second keeper run right
+#    after leaves the phase 1 routers alone and doesn't buy back again.
 # The deployments file goes to deployments/launchpads/rehearsal.json (git-ignored) and the anvil log to
 # $TMPDIR. Needs forge, cast, anvil and jq. KEEP_ANVIL=1 leaves the node running at the end, and
 # STOP_BEFORE_KEEPER=1 (with it) stops before step 5, for poking around with cast.
 set -euo pipefail
 
 : "${ELYSIUM_RPC_URL:?set ELYSIUM_RPC_URL, for example https://rpc.eleos.fun}"
-FORK_BLOCK=${FORK_BLOCK:-358639}
+FORK_BLOCK=${FORK_BLOCK:-2845000}
 PORT=${PORT:-8547}
 RPC=http://127.0.0.1:$PORT
 export LAUNCHPADS_FILE=deployments/launchpads/rehearsal.json
@@ -41,10 +44,11 @@ CREATOR=$(addr $CREATOR_KEY)
 LOCKER=$(addr $LOCKER_KEY)
 TREASURY=0x000000000000000000000000000000000000bEEF
 
-TST2255=0x1EaDE08E6BEf1ac50bac8A70e230A26286be3a85
-BULL=0xF3bC1443b3aC94FcD77A9808Cc51EbE6007f38bd
-CHUD=0xee522C896A72dbE25Ca02d6a56C9E0E41D9FD27E
+ETF=0x3B050A7C1039FEF56e9c241608953D6E6d5c1D9E
 MIX=0x949a66AC7d58eC0a64B1414A9471F1083143FdAB
+CHUD=0xee522C896A72dbE25Ca02d6a56C9E0E41D9FD27E
+BULL=0xF3bC1443b3aC94FcD77A9808Cc51EbE6007f38bd
+ELYSA=0xCaC5B6e74eB7383AF0a6DC344D996e225BBF9a17
 
 anvil --fork-url "$ELYSIUM_RPC_URL" --fork-block-number "$FORK_BLOCK" --port "$PORT" --silent >"$LOG" 2>&1 &
 ANVIL=$!
@@ -99,6 +103,14 @@ take_role() {
     send "$hook" "acceptCreator(bytes32)" "$id" --private-key "$CREATOR_KEY"
   elif [ "$pad" = "elyspump" ]; then
     send "$hook" "setFeeReceiver(address,address)" "$coin" "$CREATOR" --unlocked --from "$real"
+  elif [ "$pad" = "volta" ]; then
+    # the role is the creator NFT; Volta's hook is its PositionManager, the NFT is its own contract
+    local nft nftId
+    nft=$(call "$src" "creatorNft(address)(address,uint256)" "$coin" | sed -n 1p)
+    nftId=$(call "$src" "creatorNft(address)(address,uint256)" "$coin" | sed -n 2p | num)
+    send "$nft" "transferFrom(address,address,uint256)" "$real" "$CREATOR" "$nftId" --unlocked --from "$real"
+  elif [ "$pad" = "montra" ]; then
+    send "$hook" "updateRecipient(bytes32,address)" "$id" "$CREATOR" --unlocked --from "$real"
   else
     send "$hook" "transferCreator(address,address)" "$coin" "$CREATOR" --unlocked --from "$real"
   fi
@@ -114,7 +126,8 @@ buy() {
   src=$(jq -r --arg p "$pad" '.launchpads[$p].source' "$FILE")
   info=$(call "$src" "hookOf(address)(address,(uint8,address))" "$coin" | sed -n 2p)
   pm=$(grep -oE '0x[0-9a-fA-F]{40}' <<<"$info")
-  keyTuple=$(call "$src" "poolKey(address)((address,address,uint24,int24,address))" "$coin" | tr -d ' ')
+  # cast annotates large numbers ("8388608 [8.388e6]", Montra's dynamic-fee flag); drop that
+  keyTuple=$(call "$src" "poolKey(address)((address,address,uint24,int24,address))" "$coin" | sed 's/\[[^]]*\]//g' | tr -d ' ')
   id=$(cast keccak "$(cast abi-encode "f((address,address,uint24,int24,address))" "$keyTuple")")
   swapper=$(jq -r --arg p "$pad" --arg pm "$pm" \
     '.launchpads[$p] as $l | [range(0; $l.poolManagers | length) | select(($l.poolManagers[.] | ascii_downcase) == ($pm | ascii_downcase)) | $l.swappers[.]][0]' "$FILE")
@@ -126,7 +139,7 @@ buy() {
 ROUTERS=()
 # the Kleos router buys back through the deployment's V4Swapper (phase 2); the others keep the buyback share in
 # reserve (phase 1)
-for spec in "eleos $TST2255 none" "kleos $BULL v4" "boxa $CHUD none" "elyspump $MIX none"; do
+for spec in "volta $ETF none" "elyspump $MIX none" "boxa $CHUD none" "kleos $BULL v4" "montra $ELYSA none"; do
   read -r pad coin swap <<<"$spec"
   echo "== 3. $pad: activate $coin"
   take_role "$pad" "$coin"
@@ -148,8 +161,8 @@ for spec in "eleos $TST2255 none" "kleos $BULL v4" "boxa $CHUD none" "elyspump $
   send "$EXILE" "lockERC20(address,uint256,uint64,uint256)" "$coin" "$bal" "$unlock" "$pid" --private-key "$LOCKER_KEY"
 done
 
-# volume on all four coins, spread out so Eleos's hook sees a market and not one jump. Twenty rounds so that
-# CHUD, whose creator gets the least of the tax, clears the keeper's 0.001 HYPE minimum
+# volume on all five coins, spread out so the price observer sees a market and not one jump. Twenty rounds so
+# that CHUD, whose creator gets the least of the tax, clears the keeper's 0.001 HYPE minimum
 for _ in $(seq 1 20); do
   for r in "${ROUTERS[@]}"; do
     read -r pad coin _ _ <<<"$r"
@@ -169,7 +182,7 @@ RPC_URL=$RPC KEEPER_PRIVATE_KEY=$KEEPER_KEY tools/keeper-launchpads.sh "$FILE" 9
 
 # right after, the phase 1 routers have nothing to route. The phase 2 router may route the creator fee its own
 # buyback just paid on Kleos's tax, but must not buy again inside the 30 minute buyback interval.
-read -r _ _ KLEOS_ROUTER _ <<<"${ROUTERS[1]}"
+KLEOS_ROUTER=$(call "$(jq -r '.launchpads.kleos.factory' "$FILE")" "lodestarOf(address)(address)" "$BULL")
 burnedBefore=$(call "$KLEOS_ROUTER" "totalBuybackTokensBurned()(uint256)" | num)
 echo "== 5b. keeper again, right after"
 second=$(RPC_URL=$RPC KEEPER_PRIVATE_KEY=$KEEPER_KEY tools/keeper-launchpads.sh "$FILE" 99901)
@@ -201,6 +214,6 @@ done
 harvested=$(cast logs --from-block "$FORK_BLOCK" --address "$EXILE" "Harvested(address indexed,uint256 indexed,uint256,bool)" \
   --rpc-url "$RPC" --json | jq length)
 echo "Exile harvests: $harvested"
-[ "$harvested" -ge 4 ] || ok=0
+[ "$harvested" -ge 3 ] || ok=0
 rm -f "$FILE"
 if [ "$ok" = 1 ]; then echo "rehearsal passed"; else echo "rehearsal FAILED"; exit 1; fi

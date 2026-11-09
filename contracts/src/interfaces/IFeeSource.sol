@@ -2,13 +2,14 @@
 pragma solidity ^0.8.24;
 
 /// @notice What a Lodestar needs to know about the launchpad that holds its token's creator role. One adapter
-/// per launchpad (Ascend, Boxa, Kleos, Eleos, ElysPump) answers views and builds the calls the router sends
-/// itself, since a launchpad only answers the address that holds the creator role. A router stores its adapter
-/// once, at initialize, and only ever sends a call to the pool's `hook` (the contract that holds the role), never
-/// with value, so an adapter cannot turn a router into a generic caller.
+/// per launchpad (Ascend, Volta, ElysPump, Boxa, Kleos, Montra) answers views and builds the calls the router
+/// sends itself, since a launchpad only answers the address that holds the creator role. A router stores its
+/// adapter once, at initialize, and only ever sends a call to the pool's `hook` (the contract that holds the role)
+/// or to the launchpad's `payer` (the contract that pays the role's fees, where that is another one), never with
+/// value, so an adapter cannot turn a router into a generic caller.
 interface IFeeSource {
     /// @dev TwoStep: the creator proposes the router and the router accepts (Ascend testnet, Boxa). OneStep: the
-    /// creator hands the role over in one call and there is nothing to accept (Kleos, Eleos, ElysPump).
+    /// creator hands the role over in one call and there is nothing to accept (Volta, ElysPump, Kleos, Montra).
     /// TwoStepDelayed: like TwoStep, but the router can only accept after a wait (Ascend v5, 48 hours), so the
     /// factory deploys the router without accepting and anyone calls `Lodestar.acceptCreator()` once the wait is
     /// over.
@@ -35,6 +36,11 @@ interface IFeeSource {
 
     /// @notice The launchpad's listing desk, or address(0) when it has none.
     function desk() external view returns (address);
+
+    /// @notice The contract that pays the creator role's fees when it isn't the `hook` that holds the role (Volta:
+    /// the role is an NFT and its fees wait in a separate escrow), or address(0) when the hook pays them. A router
+    /// reads it once, at initialize, and from then on sends launchpad calls only to its hook and this address.
+    function payer(address token) external view returns (address);
 
     function creator(address token, bytes32 poolId) external view returns (address);
 
@@ -74,11 +80,11 @@ interface IFeeSource {
     /// it at the start of every distribute and ignores a failure.
     function poke(address token, bytes32 poolId) external;
 
-    /// @notice Calls that move accrued fees to where the creator can claim them (Ascend `collect`, Eleos
-    /// `process`). Empty when there is nothing to do.
+    /// @notice Calls that move accrued fees to where the creator can claim them (Ascend `collect`). Empty when
+    /// there is nothing to do.
     function collectCalls(address token, bytes32 poolId, address router) external view returns (Call[] memory);
 
-    /// @notice Calls that pay the creator's fees to `router`. Empty when nothing is owed.
+    /// @notice Calls that pay the creator's fees to `router`, to the hook or the payer. Empty when nothing is owed.
     function claimCalls(address token, bytes32 poolId, address router) external view returns (Call[] memory);
 
     /// @notice Calls that complete a two-step handover to `router`. Empty for OneStep launchpads.
