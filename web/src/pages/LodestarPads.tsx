@@ -69,9 +69,10 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
           Lodestar
         </h1>
         <p className="muted">
-          Your coin's creator fees, paid to the holders who lock it. A Lodestar holds your coin's creator role on Ascend and other
-          supported launchpads and routes your creator fees the way you set it: to Exile lockers, into buyback and burn, or to a Team Treasury streamed through Sandfall. Locked
-          coins keep earning the coin's own holder dividends too. Later changes wait 12 hours, in public. No fees.
+          Your coin's creator fees, paid to the holders who lock it. A Lodestar holds your coin's creator role on Ascend, Volta, Montra,
+          ElysPump, Boxa or Kleos and pays the fees to Exile lockers by tier, with any share you choose bought back and burned or streamed
+          to the team through Sandfall. Locked coins keep earning the coin's own holder dividends too. Later changes wait 12 hours, in
+          public. No fees.
         </p>
         {canLaunch && (
           <Switch

@@ -4,16 +4,16 @@
 
 # Monarchy
 
-### Lock to earn the fees. On Ascend, Volta, Montra, ElysPump, Boxa and Kleos.
+### Lock to earn. Vest in the open. For coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos.
 
 [![CI](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml)
-[![Tests: 234 passing](https://img.shields.io/badge/Foundry-234%20tests%20passing-111111.svg)](contracts/test)
+[![Tests: 237 passing](https://img.shields.io/badge/Foundry-237%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](LICENSE)
 
-**Holders who lock earn a share of every creator fee, more the longer they lock. Each creator decides how the rest is burned, bought back or streamed to the team, and every change happens in public. Monarchy takes nothing.**
+**Lock a coin and earn its creator fees, more the longer you lock. Vest team tokens on a schedule anyone can check. See every lock, stream and payout in the Garden. Monarchy takes nothing.**
 
 [Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Volta, Montra, ElysPump, Boxa and Kleos](docs/launchpads.md) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
 
@@ -25,12 +25,14 @@
 
 ## Why Monarchy
 
-Ascend has no token, and its NFT is capped at 500. People who want a piece of Ascend usually reach for the launchpad's own token, and here there isn't one. Monarchy aims to be that token: a liquid coin whose trading fees flow back to the holders who lock it, built on the same tools it offers every other Ascend project.
+Launchpads on Elysium already split each coin's trading fee between the creator, the platform and often a buyback, and Ascend now offers fee splits as well, so a fee split on its own isn't new. What none of them give holders is a reason to stay. Monarchy is the locking, vesting and rewards layer for any coin on Ascend, Volta, Montra, ElysPump, Boxa and Kleos: holders lock and earn the coin's creator fees, team tokens vest in public, and the Garden shows all of it live from the contracts.
 
-On Ascend the creator role collects a share of every swap fee: half of a 1% fee on the testnet launchpad, and on Ascend's mainnet launchpad (v5) a fee the creator picks from 1% to 10%, paid in the quote asset. Without Monarchy that money sits in one wallet, holders earn nothing for holding, and promises about buybacks or vesting can't be checked on chain. Monarchy replaces those promises with contracts, built on two ideas:
+On these launchpads the creator role collects a share of every swap fee: on Ascend's mainnet launchpad (v5) a fee the creator picks from 1% to 10%, and on Volta, Montra, ElysPump, Boxa and Kleos the creator's cut of the coin's tax, paid in HYPE. Without Monarchy that money sits in one wallet, holders earn nothing for holding, and promises about rewards or vesting can't be checked on chain. Monarchy replaces those promises with contracts:
 
-- **Lock to earn.** Holding a token earns nothing on its own. Holders who lock it in Exile earn a share of every fee, by tier from Peasant (0.5x for a day) to Monarch (4x for a month), so rewards go to the people who stay, not to wallets that sell the next day.
-- **Your token, your rules.** Each creator sets the split between buyback and burn, lockers and the Team Treasury, where token-side fees go, the four lock tiers and how fast the treasury streams. Splits, routes and tiers stay adjustable, but only in public: every change waits 12 hours on chain where anyone can see it coming.
+- **Lock to earn.** Holding a coin earns nothing on its own. Holders who lock it in Exile earn a share of its creator fees, by tier from Peasant (0.5x for a day) to Monarch (4x for a month), so rewards go to the people who stay, not to wallets that sell the next day. Locks can be extended but never shortened or cancelled, and a team can lock its own supply without rewards so every reward goes to the other lockers.
+- **Vest in the open.** Sandfall streams team, contributor and treasury tokens out linearly, after a cliff or in daily, weekly or monthly steps, in any token or native HYPE. Every stream shows on chain whether its creator can cancel it, so "the team tokens are vested" becomes something anyone can check.
+- **Fees to the lockers.** A Lodestar takes the coin's creator role and pays the creator's fees to the coin's Exile lockers (50% by default), with any share the creator picks bought back and burned or streamed to the team through Sandfall. Every later change waits 12 hours in public.
+- **Proof in the Garden.** Every lock, vesting stream and router is listed live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden), with nothing stored or reported by Monarchy.
 
 ### On Ascend's mainnet launchpad (v5)
 
@@ -42,13 +44,13 @@ The Uniswap v4 launchpads on Elysium mainnet already split each coin's trading f
 
 ## Monarchy runs on Monarchy
 
-The MONARCHY token gets no special treatment. It launches on Ascend like any other token and runs on the same contracts Monarchy offers everyone, with the same zero fees, the same 12 hour timelock and the same 7 day notice before a router can move. Most tokens ask holders to trust the team with the fees; MONARCHY's are handled by code anyone can read and check.
+The MONARCHY token gets no special treatment. It launches on Ascend like any other coin and runs on the same contracts Monarchy offers everyone, with the same zero fees, the same 12 hour timelock and the same 7 day notice before a router can move. Most coins ask holders to trust the team with the fees; MONARCHY's are handled by code anyone can read and check.
 
 | | How MONARCHY uses it |
 |---|---|
-| **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers or burned, and the quote side splits into buyback and burn, holder rewards and the Team Treasury. |
 | **Exile** | Holders lock MONARCHY to earn the holder share of every fee, by tier from Peasant to Monarch. |
 | **Sandfall** | The Team Treasury share streams to the team in the open, never in one lump. |
+| **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers, and the quote side goes to holder rewards, buyback and burn and the Team Treasury. |
 | **Garden** | Monarchy's analytics page lists every lock, vesting stream and fee router, MONARCHY's included, live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden). Locks and streams sit under MONARCHY and Others, every table filters by token address or symbol, and each router shows any change still waiting out its timelock. |
 
 On testnet, Sample Token (SMPL) stands in for MONARCHY with exactly this setup.
@@ -67,9 +69,9 @@ flowchart LR
 
 | | What it does |
 |---|---|
-| **Lodestar** | A fee router for one token on Ascend, or on Volta, Montra, ElysPump, Boxa or Kleos where the quote is native HYPE ([details](docs/launchpads.md)). The creator launches on the launchpad's own site and keeps the dev buy, then hands the token's *creator role* to its Lodestar. Anyone can call `distribute()`, and the team's keeper calls it every 3 hours so fees never pile up into one big payout: token-side fees are all paid to Exile lockers in the token itself (or, if the creator chooses, burned), and quote-side fees split by the creator's percentages into **buyback and burn**, **holder rewards** (Exile) and a **Team Treasury** (streamed through Sandfall). Ascend's listing set-aside stays off, so the creator's whole fee share reaches the router. |
 | **Exile** | Locks ERC-20s (including v2 LP), ERC-721s and ERC-1155s. Locks can be extended, never shortened, cancelled or transferred. ERC-20 locks earn holder rewards by tier, paid as a 3 day drip, and stop earning the second they unlock. |
 | **Sandfall** | Vesting streams (linear, with an optional cliff, or in daily, weekly or monthly steps) in any non-rebasing ERC-20 or native HYPE, each with a chart of what unlocks by when. The creator decides at creation whether a stream can be cancelled, and the site badges it. Rolling streams back Lodestar's Team Treasury. |
+| **Lodestar** | A fee router for one token on Ascend, or on Volta, Montra, ElysPump, Boxa or Kleos where the quote is native HYPE ([details](docs/launchpads.md)). The creator launches on the launchpad's own site and keeps the dev buy, then hands the token's *creator role* to its Lodestar. Anyone can call `distribute()`, and the team's keeper calls it every 3 hours so fees never pile up into one big payout: token-side fees are all paid to Exile lockers in the token itself (or, if the creator chooses, burned), and quote-side fees split by the creator's percentages into **buyback and burn**, **holder rewards** (Exile) and a **Team Treasury** (streamed through Sandfall). Ascend's listing set-aside stays off, so the creator's whole fee share reaches the router. |
 
 ### Exile tiers
 

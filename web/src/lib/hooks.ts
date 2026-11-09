@@ -32,6 +32,6 @@ export const POLL = { query: { refetchInterval: 2000 } } as const;
 /** Sets the tab title for a page. */
 export function usePageTitle(title?: string) {
   useEffect(() => {
-    document.title = title ? `${title} | Monarchy` : "Monarchy | Fee routing, locks and vesting for Ascend";
+    document.title = title ? `${title} | Monarchy` : "Monarchy | Lock to earn, vest in the open";
   }, [title]);
 }

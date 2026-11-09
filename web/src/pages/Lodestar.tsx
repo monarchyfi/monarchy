@@ -45,10 +45,9 @@ export function LodestarPage() {
           Lodestar
         </h1>
         <p className="muted">
-          Your token, your rules. A Lodestar holds your token's creator role and routes every fee the way you set it: to
-          Exile lockers, into buyback and burn, or to a Team Treasury streamed through Sandfall. You pick the split, where
-          token-side fees go and the lock tiers, and anyone can trigger a distribute. Later changes wait 12 hours, in public.
-          No fees.
+          Your token's creator fees, paid to the holders who lock it. A Lodestar holds your token's creator role and pays its
+          fees to Exile lockers by tier, with any share you choose bought back and burned or streamed to a Team Treasury through
+          Sandfall. Anyone can trigger a distribute, and later changes wait 12 hours, in public. No fees.
         </p>
       </header>
       <Card title="Token">

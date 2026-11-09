@@ -48,8 +48,9 @@ export function SandfallPage() {
           Sandfall
         </h1>
         <p className="muted">
-          Vesting streams in any token or native HYPE. The creator decides at creation whether a stream can be
-          cancelled, and every stream shows it. Streams can't be transferred.
+          Vesting in the open. Stream team and contributor tokens out linearly, after a cliff or in steps, in any token or native
+          HYPE, so holders can see what unlocks and when. The creator decides at creation whether a stream can be cancelled, and
+          every stream shows it. Streams can't be transferred.
         </p>
       </header>
 

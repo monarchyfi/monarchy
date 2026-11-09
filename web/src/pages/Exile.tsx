@@ -60,9 +60,9 @@ export function ExilePage() {
           Exile
         </h1>
         <p className="muted">
-          Lock to earn. Holding a token earns nothing; locking it earns a share of its fees, and the longer the lock, the
-          bigger the share. A lock can be extended but never shortened, cancelled or transferred. LP tokens and NFTs can be
-          locked too.
+          Lock to earn. Holding a coin earns nothing; locking it earns a share of its creator fees, and the longer the lock, the
+          bigger the share. Any coin can be locked, and every coin with a Lodestar pays its lockers. A lock can be extended but
+          never shortened, cancelled or transferred. LP tokens and NFTs can be locked too.
         </p>
       </header>
 

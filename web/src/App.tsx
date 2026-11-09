@@ -18,9 +18,9 @@ import { SandfallPage } from "./pages/Sandfall";
 
 const LINKS = [
   { to: "/kingdom", label: "Kingdom", hint: "How it works and live stats", key: "kingdom", glyph: <CastleGlyph /> },
-  { to: "/lodestar", label: "Lodestar", hint: "Fee router", key: "lodestar", glyph: <StarGlyph /> },
-  { to: "/exile", label: "Exile", hint: "Locks and rewards", key: "exile", glyph: <GateGlyph /> },
-  { to: "/sandfall", label: "Sandfall", hint: "Vesting", key: "sandfall", glyph: <HourglassGlyph /> },
+  { to: "/exile", label: "Exile", hint: "Lock to earn", key: "exile", glyph: <GateGlyph /> },
+  { to: "/sandfall", label: "Sandfall", hint: "Vesting in the open", key: "sandfall", glyph: <HourglassGlyph /> },
+  { to: "/lodestar", label: "Lodestar", hint: "Pay a coin's fees to its lockers", key: "lodestar", glyph: <StarGlyph /> },
 ];
 
 // the word, with the tool's mark hidden in front of it until hover
@@ -185,7 +185,7 @@ export function App() {
           <div className="foot-brand">
             <span>MONARCHY</span>
             <span className="foot-sep" aria-hidden="true" />
-            <span>Built on Ascend. No fees.</span>
+            <span>Locks, vesting and rewards for lockers. No fees.</span>
           </div>
           <div className="foot-links">
             <a href="https://x.com/monarchyfi" target="_blank" rel="noreferrer">

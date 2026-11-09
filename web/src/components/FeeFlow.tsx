@@ -18,7 +18,7 @@ export function TokenFeeFlow() {
 
 type Dest = { key: string; mark: string; title: string; tag: string; body: string };
 
-/** Ascend pool fees, through Lodestar, out to the four places they can go: token-side fees on one route, quote-side fees split three ways. */
+/** A coin's creator fees, through Lodestar, out to the four places they can go: token-side fees on one route, quote-side fees split three ways, lockers first. */
 export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { drip: number; burn?: number; holders?: number; treasury?: number; tokenToHolders?: boolean }) {
   // the live numbers are MONARCHY's own split; every token on Lodestar picks its own
   const share = (bps?: number) => (bps === undefined ? "Quote share" : `${pct(bps)} for MONARCHY`);
@@ -30,8 +30,8 @@ export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { dri
     body: `Sent to Exile lockers by default, paid in the token itself over ${drip} days. The creator can burn all of it instead.`,
   };
   const quoteSide: Dest[] = [
-    { key: "burn", mark: "[∞]", title: "Buyback and burn", tag: share(burn), body: "Buys the token on Ascend, then burns it." },
-    { key: "hold", mark: "[+]", title: "Exile holders", tag: share(holders), body: `Paid to locked holders by tier, over ${drip} days.` },
+    { key: "hold", mark: "[+]", title: "Exile lockers", tag: share(holders), body: `Paid to locked holders by tier, over ${drip} days.` },
+    { key: "burn", mark: "[∞]", title: "Buyback and burn", tag: share(burn), body: "Buys the token through its own pool, then burns it." },
     { key: "treas", mark: "[~]", title: "Sandfall treasury", tag: share(treasury), body: "Streamed to the Team Treasury in the open." },
   ];
   const { branch, list, h, ys } = useBranchTargets();
@@ -42,17 +42,17 @@ export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { dri
   return (
     <section className="flow" aria-labelledby="flow-title">
       <div className="flow-head">
-        <h2 id="flow-title">Where the fees go</h2>
+        <h2 id="flow-title">How lockers get paid</h2>
         <p className="muted">
-          Every creator fee follows the same public path, and nothing stops at Monarchy. The percentages below are MONARCHY's own: every token on Lodestar sets
-          its own split when it activates.
+          A Lodestar takes a coin's creator fees and pays them out on a public path: to the holders who lock, and any share the creator picks to buyback
+          and burn or a Team Treasury. Nothing stops at Monarchy. The percentages below are MONARCHY's own, and each coin picks its own when it activates.
         </p>
       </div>
       <div className="flow-body">
         <div className="flow-node flow-src ascii-box">
           <div className="flow-kicker">Source</div>
-          <div className="flow-title">Ascend pool fees</div>
-          <p>The creator's share of every swap fee. On the testnet that is half of a 1% fee, in the token and the quote asset.</p>
+          <div className="flow-title">Creator fees</div>
+          <p>The creator's share of every swap fee on the coin's launchpad, in the token and the quote asset.</p>
         </div>
         <FlowArrow />
         <div className="flow-node flow-hub ascii-box">
@@ -82,7 +82,7 @@ export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { dri
             </ul>
           </div>
           <div className="flow-group">
-            <div className="flow-group-k">Quote side, split by each token's creator</div>
+            <div className="flow-group-k">Quote side</div>
             <ul>
               {quoteSide.map((d) => (
                 <DestItem key={d.key} d={d} />

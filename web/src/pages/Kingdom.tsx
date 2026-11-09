@@ -17,7 +17,7 @@ import { days } from "./Home";
 // Lodestar burns to this address; Ascend tokens reject 0x…dEaD
 const DEAD = "0xdEAD000000000000000042069420694206942069";
 
-/** The overview the landing page leaves out: the promises, where fees go, live numbers, the three features and the court. */
+/** The overview the landing page leaves out: the promises, the three features (locking first), the court, where fees go and live numbers. */
 export function KingdomPage() {
   usePageTitle("Kingdom");
   const d = useDeployment();
@@ -65,9 +65,9 @@ export function KingdomPage() {
           Kingdom
         </h1>
         <p>
-          Every token launched on Ascend can run its own kingdom, by its own rules. Holders who lock earn a share of every fee,
-          more the longer they lock, and the creator decides how the rest is burned, bought back or streamed to the team. All of
-          it happens in the open, and Monarchy keeps none of it.
+          Monarchy rewards the holders who stay. Lock a coin in Exile and earn a share of its creator fees, more the longer you
+          lock. Vest team tokens through Sandfall on a schedule anyone can check. Every lock, stream and payout shows in the
+          Garden. It works for coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos, and Monarchy keeps none of it.
         </p>
       </div>
 
@@ -85,80 +85,21 @@ export function KingdomPage() {
         </li>
         <li className="seal">
           <span className="seal-text">
-            <b>Your rules, in public.</b> Each token sets its own split, burns and tiers, and every change waits 12 hours.
+            <b>Vesting in the open.</b> Team tokens stream out on a public schedule, and every stream shows whether it can be cancelled.
           </span>
         </li>
         <li className="seal">
           <span className="seal-text">
-            <b>No sweep.</b> Funds only go where the contracts say, and a router moves only after 7 days' notice.
+            <b>No sweep.</b> Funds only go where the contracts say. Changes wait 12 hours in public, and a router moves only after 7 days' notice.
           </span>
         </li>
       </ul>
 
-      <TokenFeeFlow />
-
-      {!d && <NoDeployment inline />}
-
-      {d && core.lodestar && (
-        <Card
-          className="kingdom"
-          title="The Monarchy"
-          right={
-            <span className="live">
-              <i className="live-dot" /> Live from Lodestar
-            </span>
-          }
-        >
-          <p className="kingdom-lead">
-            Most tokens ask holders to trust the team with the fees. <b>MONARCHY runs on its own features instead</b>, the same
-            contracts it offers every Ascend token, with the same zero fees and the same timelocks. Nothing here is special to it,
-            and each feature below shows how MONARCHY uses it.
-            {standIn && <span className="faint"> Until MONARCHY launches, the sample token {ts} stands in.</span>}
-          </p>
-          <div className="stats stats-3">
-            <Stat className="stat-feature" label="Burned in total" value={<Amt value={dead} decimals={td} symbol={ts} compact />} hint={burnShare ?? <Skel w="7em" />} />
-            <Stat label="Paid to holders" value={<Amt value={holders} decimals={qd} symbol={qs} />} hint={dripPerDay === undefined ? <Skel w="8em" /> : `${fmt(dripPerDay, qd)} ${qs ?? ""} a day dripping now`} />
-            <Stat label="Team Treasury" value={<Amt value={treasury} decimals={qd} symbol={qs} />} hint="Streamed through Sandfall" />
-            <Stat label="Bought back and burned" value={<Amt value={buybackBurned} decimals={td} symbol={ts} compact />} hint={buybackQuote === undefined ? <Skel w="7em" /> : `${fmt(buybackQuote, qd)} ${qs ?? ""} spent`} />
-            {cfg?.tokenToHolders ? (
-              <Stat label="Token fees to lockers" value={<Amt value={tokenToHolders} decimals={td} symbol={ts} compact />} hint="Dripped to Exile lockers" />
-            ) : (
-              <Stat label="Burned from token fees" value={<Amt value={feeBurned} decimals={td} symbol={ts} compact />} hint="Sent straight to the burn address" />
-            )}
-            <Stat
-              label={ts ? `Locked ${ts}` : "Locked"}
-              value={<Amt value={locked?.amount} decimals={td} symbol={ts} compact />}
-              hint={locked ? `${locked.locks} ${locked.locks === 1 ? "lock" : "locks"} by ${locked.lockers} ${locked.lockers === 1 ? "holder" : "holders"}` : <Skel w="9em" />}
-            />
-          </div>
-        </Card>
-      )}
-
       <div className="grid3">
-        <Feature
-          to="/lodestar"
-          title="Lodestar"
-          kicker="Fee router"
-          icon={<StarGlyph />}
-          cls="nl-lodestar"
-          ours={
-            live && (
-              <>
-                <span>
-                  Holds MONARCHY's creator role at <Addr address={core.lodestar} />.
-                </span>
-                {lockedUntil === undefined ? <Skel w="10em" /> : lockedUntil >= 2n ** 63n ? <Badge tone="gold">Locked to it forever</Badge> : <Badge tone="amber">Not locked yet</Badge>}
-              </>
-            )
-          }
-        >
-          Holds your token's Ascend creator role, and you keep your dev buy. You set the rules: the split between buyback and
-          burn, lockers and a Team Treasury, where token-side fees go, and the lock tiers.
-        </Feature>
         <Feature
           to="/exile"
           title="Exile"
-          kicker="Locks and rewards"
+          kicker="Lock to earn"
           icon={<GateGlyph />}
           cls="nl-exile"
           ours={
@@ -172,13 +113,13 @@ export function KingdomPage() {
             )
           }
         >
-          Lock to earn. Holding alone earns nothing, and longer locks earn a bigger share, paid as a {dayLabel(drip)} drip.
-          Locks can be extended, never shortened or cancelled, and work for v2 LP and NFTs too.
+          Lock any coin. Holding alone earns nothing, and on a coin with a Lodestar longer locks earn a bigger share of its fees,
+          paid as a {dayLabel(drip)} drip. Locks can be extended, never shortened or cancelled, and work for v2 LP and NFTs too.
         </Feature>
         <Feature
           to="/sandfall"
           title="Sandfall"
-          kicker="Vesting"
+          kicker="Vesting in the open"
           icon={<HourglassGlyph />}
           cls="nl-sandfall"
           ours={
@@ -189,7 +130,28 @@ export function KingdomPage() {
             )
           }
         >
-          Linear, cliff or monthly vesting in any token or HYPE. Every stream shows whether its creator can cancel it.
+          Team and contributor tokens vest on a schedule anyone can read: linear, cliff or monthly, in any token or HYPE. Every
+          stream shows whether its creator can cancel it.
+        </Feature>
+        <Feature
+          to="/lodestar"
+          title="Lodestar"
+          kicker="Fees to lockers"
+          icon={<StarGlyph />}
+          cls="nl-lodestar"
+          ours={
+            live && (
+              <>
+                <span>
+                  Holds MONARCHY's creator role at <Addr address={core.lodestar} />.
+                </span>
+                {lockedUntil === undefined ? <Skel w="10em" /> : lockedUntil >= 2n ** 63n ? <Badge tone="gold">Locked to it forever</Badge> : <Badge tone="amber">Not locked yet</Badge>}
+              </>
+            )
+          }
+        >
+          Takes your coin's creator role and pays its fees to the holders who lock it. You keep your dev buy, and you can send a
+          share to buyback and burn or to a Team Treasury that streams through Sandfall.
         </Feature>
       </div>
 
@@ -209,6 +171,45 @@ export function KingdomPage() {
         </div>
         <p className="muted small">No lock, no rewards. Rewards stop the moment a lock ends.</p>
       </Card>
+
+      <TokenFeeFlow />
+
+      {!d && <NoDeployment inline />}
+
+      {d && core.lodestar && (
+        <Card
+          className="kingdom"
+          title="The Monarchy"
+          right={
+            <span className="live">
+              <i className="live-dot" /> Live from Lodestar
+            </span>
+          }
+        >
+          <p className="kingdom-lead">
+            Most coins ask holders to trust the team with the fees. <b>MONARCHY runs on its own features instead</b>, the same
+            contracts Monarchy offers every coin, with the same zero fees and the same timelocks. Nothing here is special to it,
+            and each feature above shows how MONARCHY uses it.
+            {standIn && <span className="faint"> Until MONARCHY launches, the sample token {ts} stands in.</span>}
+          </p>
+          <div className="stats stats-3">
+            <Stat className="stat-feature" label="Paid to lockers" value={<Amt value={holders} decimals={qd} symbol={qs} />} hint={dripPerDay === undefined ? <Skel w="8em" /> : `${fmt(dripPerDay, qd)} ${qs ?? ""} a day dripping now`} />
+            <Stat
+              label={ts ? `Locked ${ts}` : "Locked"}
+              value={<Amt value={locked?.amount} decimals={td} symbol={ts} compact />}
+              hint={locked ? `${locked.locks} ${locked.locks === 1 ? "lock" : "locks"} by ${locked.lockers} ${locked.lockers === 1 ? "holder" : "holders"}` : <Skel w="9em" />}
+            />
+            <Stat label="Team Treasury" value={<Amt value={treasury} decimals={qd} symbol={qs} />} hint="Streamed through Sandfall" />
+            {cfg?.tokenToHolders ? (
+              <Stat label="Token fees to lockers" value={<Amt value={tokenToHolders} decimals={td} symbol={ts} compact />} hint="Dripped to Exile lockers" />
+            ) : (
+              <Stat label="Burned from token fees" value={<Amt value={feeBurned} decimals={td} symbol={ts} compact />} hint="Sent straight to the burn address" />
+            )}
+            <Stat label="Bought back and burned" value={<Amt value={buybackBurned} decimals={td} symbol={ts} compact />} hint={buybackQuote === undefined ? <Skel w="7em" /> : `${fmt(buybackQuote, qd)} ${qs ?? ""} spent`} />
+            <Stat label="Burned in total" value={<Amt value={dead} decimals={td} symbol={ts} compact />} hint={burnShare ?? <Skel w="7em" />} />
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
