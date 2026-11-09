@@ -99,7 +99,7 @@ export function PadsLodestar({ pads }: { pads: LaunchpadsDeployment }) {
               <span className="field-label">Launchpad</span>
               <Switch options={list.map(({ info }) => ({ key: info.key, label: info.name }))} value={choice} onChange={(k) => setChoice(k as PadKey)} />
             </div>
-            <p className="muted small field-help">Pick the launchpad your coin was launched on. The page checks that the coin really is there before it shows anything.</p>
+            <p className="muted small field-help">Pick the launchpad your coin was launched on.</p>
             <label className="field">
               <span className="field-label">Coin address</span>
               <input className="input mono-input" placeholder="0x…" value={input} onChange={(e) => setInput(e.target.value.trim())} spellCheck={false} autoComplete="off" />
@@ -288,13 +288,19 @@ function PadToken({ pads, token, choice, onSwitch }: { pads: LaunchpadsDeploymen
       );
     return (
       <Card>
-        <Empty title={`Wrong launchpad: this coin isn't on ${name}`}>
-          {elsewhere ? (
-            <>
-              It was launched on <b className="text">{elsewhere.info.name}</b>.{" "}
+        <Empty
+          title={`Wrong launchpad: this coin isn't on ${name}`}
+          action={
+            elsewhere && (
               <button type="button" className="btn btn-ghost" onClick={() => onSwitch(elsewhere.info.key)}>
                 Switch to {elsewhere.info.name}
               </button>
+            )
+          }
+        >
+          {elsewhere ? (
+            <>
+              It was launched on <b className="text">{elsewhere.info.name}</b>.
             </>
           ) : target.info.quotes ? (
             `It has no ${name} launch pool against ${target.info.quotes.map((q) => q.symbol).join(", ")}, and none of the other supported launchpads knows it either. Check the address.`
