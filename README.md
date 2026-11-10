@@ -4,9 +4,9 @@
 
 # Monarchy
 
-### Lock to earn. Vest in the open. For coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos.
+### Lock to earn. Vest in the open. For coins on supported launchpads.
 
-[![CI](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml)
+[![CI: GitHub Actions](https://img.shields.io/badge/CI-GitHub%20Actions-111111.svg)](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml)
 [![Tests: 240 passing](https://img.shields.io/badge/Foundry-240%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
@@ -15,7 +15,7 @@
 
 **Lock a coin and earn its creator fees, more the longer you lock. Vest team tokens on a schedule anyone can check. See every lock, stream and payout in the Garden. Monarchy takes nothing.**
 
-[Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Volta, Montra, ElysPump, Boxa and Kleos](docs/launchpads.md) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
+[Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Supported launchpads](#supported-launchpads) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
 
 <img src="docs/img/site-home.png" alt="The Monarchy home page: four tabs around a crown along the top with the CA chip on the right, the name MONARCHY above a large spinning crown drawn in text characters, and Steal the Crown in gold with the line Lock to earn. The kingdom shares everything with those who stay. below it" width="840" />
 
@@ -25,7 +25,7 @@
 
 ## Why Monarchy
 
-Launchpads on Elysium already split each coin's trading fee between the creator, the platform and often a buyback, and Ascend now offers fee splits as well, so a fee split on its own isn't new. What none of them give holders is a reason to stay. Monarchy is the locking, vesting and rewards layer for any coin on Ascend, Volta, Montra, ElysPump, Boxa and Kleos: holders lock and earn the coin's creator fees, team tokens vest in public, and the Garden shows all of it live from the contracts.
+Launchpads on Elysium already split each coin's trading fee between the creator, the platform and often a buyback, and Ascend now offers fee splits as well, so a fee split on its own isn't new. What none of them give holders is a reason to stay. Monarchy is the locking, vesting and rewards layer for coins on the [supported launchpads](#supported-launchpads): holders lock and earn the coin's creator fees, team tokens vest in public, and the Garden shows all of it live from the contracts.
 
 On these launchpads the creator role collects a share of every swap fee: on Ascend's mainnet launchpad (v5) a fee the creator picks from 1% to 10%, and on Volta, Montra, ElysPump, Boxa and Kleos the creator's cut of the coin's tax, paid in HYPE. Without Monarchy that money sits in one wallet, holders earn nothing for holding, and promises about rewards or vesting can't be checked on chain. Monarchy replaces those promises with contracts:
 
@@ -33,6 +33,21 @@ On these launchpads the creator role collects a share of every swap fee: on Asce
 - **Vest in the open.** Sandfall streams team, contributor and treasury tokens out linearly, after a cliff or in daily, weekly or monthly steps, in any token or native HYPE. Every stream shows on chain whether its creator can cancel it, so "the team tokens are vested" becomes something anyone can check.
 - **Fees to the lockers.** A Lodestar takes the coin's creator role and pays the creator's fees to the coin's Exile lockers (50% by default), with any share the creator picks bought back and burned or streamed to the team through Sandfall. Every later change waits 12 hours in public.
 - **Proof in the Garden.** Every lock, vesting stream and router is listed live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden), with nothing stored or reported by Monarchy.
+
+## Supported launchpads
+
+Monarchy works with coins on six launchpads on Elysium mainnet. What differs per launchpad lives in a small adapter, so a new one can be added without redeploying the core contracts.
+
+| Launchpad | Creator fees paid in | Holder dividends passed on to lockers | How a coin joins |
+|---|---|---|---|
+| [Ascend](https://ascendlaunch.xyz) (v5) | The quote asset: WHYPE, USDC or KNTQ | None (v5 coins pay no holder dividends) | Launch through Monarchy, or switch a Vanilla coin with a 48 hour hand-off |
+| [Volta](https://volta.family) | HYPE | None (Volta leaves contracts out) | The creator sends the coin's creator NFT to its Lodestar |
+| [Montra](https://montramarkets.xyz) | HYPE | None | The creator points the pool's fee recipient at its Lodestar |
+| [ElysPump](https://elysp.com) | HYPE | Yes | The creator sets its Lodestar as the fee receiver |
+| [Boxa](https://boxa.club) | HYPE | Yes | The creator proposes its Lodestar, which accepts the role |
+| [Kleos](https://thekleos.xyz) | HYPE | Yes | The creator transfers the creator role to its Lodestar |
+
+Which coins on each launchpad qualify (for example, only coins paired with HYPE on most of them) is listed in [docs/launchpads.md](docs/launchpads.md#what-each-launchpad-supports).
 
 ### On Ascend's mainnet launchpad (v5)
 
