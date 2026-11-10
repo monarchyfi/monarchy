@@ -18,15 +18,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monarchy-fi/monarchy.git"
+    "url": "git+https://github.com/monarchyfi/monarchy.git"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/monarchy-fi/monarchy/issues"
+    "url": "https://github.com/monarchyfi/monarchy/issues"
   },
-  "homepage": "https://github.com/monarchy-fi/monarchy#readme",
+  "homepage": "https://github.com/monarchyfi/monarchy#readme",
   "devDependencies": {
     "@foundry-rs/anvil": "^1.7.1",
     "@foundry-rs/cast": "^1.7.1",

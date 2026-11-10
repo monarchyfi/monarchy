@@ -6,7 +6,7 @@
 
 ### Lock to earn. Vest in the open. For coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos.
 
-[![CI](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml)
+[![CI](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml)
 [![Tests: 240 passing](https://img.shields.io/badge/Foundry-240%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
@@ -150,7 +150,7 @@ tools/               demo-local.sh, keeper scripts, rehearse-launchpads.sh, rehe
 Needs Node 20+ and [Foundry](https://getfoundry.sh) (`curl -L https://foundry.paradigm.xyz | bash && foundryup`).
 
 ```bash
-git clone --recursive https://github.com/monarchy-fi/monarchy && cd monarchy
+git clone --recursive https://github.com/monarchyfi/monarchy && cd monarchy
 npm install
 forge test            # or: npm test
 ```
