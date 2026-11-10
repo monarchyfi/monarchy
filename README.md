@@ -7,7 +7,7 @@
 ### Lock to earn. Vest in the open. For coins on supported launchpads.
 
 [![CI: GitHub Actions](https://img.shields.io/badge/CI-GitHub%20Actions-111111.svg)](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml)
-[![Tests: 240 passing](https://img.shields.io/badge/Foundry-240%20tests%20passing-111111.svg)](contracts/test)
+[![Tests: 241 passing](https://img.shields.io/badge/Foundry-241%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
@@ -44,8 +44,8 @@ Monarchy works with coins on six launchpads on Elysium mainnet. What differs per
 | [Volta](https://volta.family) | HYPE | None (Volta leaves contracts out) | The creator sends the coin's creator NFT to its Lodestar |
 | [Montra](https://montramarkets.xyz) | HYPE | None | The creator points the pool's fee recipient at its Lodestar |
 | [ElysPump](https://elysp.com) | HYPE | Yes | The creator sets its Lodestar as the fee receiver |
-| [Boxa](https://boxa.club) | HYPE | Yes | The creator proposes its Lodestar, which accepts the role |
-| [Kleos](https://thekleos.xyz) | HYPE | Yes | The creator transfers the creator role to its Lodestar |
+| [Boxa](https://boxa.club) | HYPE | Yes, except on its newest launcher, whose coins join only without a holder share | The creator proposes its Lodestar, which accepts the role |
+| [Kleos](https://thekleos.xyz) | HYPE | Yes on hooks A and B; coins on its multi-quote hooks join only without a holder share | The creator transfers the creator role to its Lodestar |
 
 Which coins on each launchpad qualify (for example, only coins paired with HYPE on most of them) is listed in [docs/launchpads.md](docs/launchpads.md#what-each-launchpad-supports).
 

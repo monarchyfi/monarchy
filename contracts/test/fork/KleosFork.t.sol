@@ -21,6 +21,9 @@ contract KleosForkTest is ForkBase {
     address internal constant HOOK_B = 0x772AccB053609D361593345e361D2a6854Ede8cc;
     address internal constant HOOK_C = 0xD5068e7f4e2D70d5eFbaC6fD28A8407252E1EAcC;
     address internal constant PM = 0xb308B5df891c300a5f5a5b8fdBC30108bA842490;
+    // Kleos's newer hook since November 9: hook C's functions, on the official pool manager
+    address internal constant HOOK_D = 0x0fa71294c909b11A0b805df4763Ba576c69c2acC;
+    address internal constant OFFICIAL_PM = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
 
     // hook A, 1% tax, 100% to the creator
     address internal constant AGORA = 0x5e5Df82d563FCF36b6f853c4D09f89e2d18825B4;
@@ -30,17 +33,22 @@ contract KleosForkTest is ForkBase {
     address internal constant BULL = 0xF3bC1443b3aC94FcD77A9808Cc51EbE6007f38bd;
     // hook C, 3% tax, 30% creator and 70% holders, paid to holders in wNVDAx
     address internal constant ECAT = 0x5f471e53Eda2110981b5ac6a1Ee7e7aE5b62B21b;
+    // hook D, 3% tax, 100% to the creator
+    address internal constant NEW_COIN = 0x31999FF2a537632645ef8b610b8869D677E89C47;
+    // hook D, 3% tax, 50% creator and 50% holders
+    address internal constant NEW_HOLDERS = 0x3Dc21a478f622D1A1f02DF7E889fa63C326618C5;
 
     KleosFeeSource internal source;
     LodestarFactory internal factory;
 
     function setUp() public {
         if (!_fork()) return;
-        address[] memory hooks = new address[](3);
-        uint8[] memory kinds = new uint8[](3);
+        address[] memory hooks = new address[](4);
+        uint8[] memory kinds = new uint8[](4);
         (hooks[0], kinds[0]) = (HOOK_A, 1);
         (hooks[1], kinds[1]) = (HOOK_B, 1);
         (hooks[2], kinds[2]) = (HOOK_C, 2);
+        (hooks[3], kinds[3]) = (HOOK_D, 2);
         source = new KleosFeeSource(observer, address(this), hooks, kinds);
         factory = _factory(IFeeSource(address(source)));
     }
@@ -103,6 +111,51 @@ contract KleosForkTest is ForkBase {
 
     function test_hookC_claimAndDistribute() public {
         _claimAndDistribute(MANTE);
+    }
+
+    function test_hookDViews() public view {
+        (bytes32 id, address hook,) = source.resolve(NEW_COIN, address(0));
+        assertEq(hook, HOOK_D);
+        assertEq(id, keccak256(abi.encode(IKleosHook(HOOK_D).poolKeyOf(NEW_COIN))));
+        (, V4FeeSource.HookInfo memory info) = source.hookOf(NEW_COIN);
+        assertEq(info.poolManager, OFFICIAL_PM);
+        assertEq(source.swapCostBps(NEW_COIN, id), 300);
+        assertEq(source.holdersShareBps(NEW_HOLDERS, bytes32(0)), 5000);
+        (uint160 spot,, uint128 liq) = source.prices(NEW_COIN, id);
+        assertGt(spot, 0);
+        assertGt(liq, 0);
+    }
+
+    function test_hookD_claimAndDistribute() public {
+        _claimAndDistribute(NEW_COIN);
+    }
+
+    function test_hookDBuyback() public {
+        Lodestar l = _activate(NEW_COIN, address(_swapper(OFFICIAL_PM)));
+        _volume(source, NEW_COIN, 0.5 ether, 10);
+        uint256 deadBefore = IERC20(NEW_COIN).balanceOf(DEAD);
+        l.distribute();
+        skip(31 minutes);
+        l.distribute();
+        assertGt(l.totalBuybackTokensBurned(), 0, "bought back on the official pool manager, net of the tax");
+        assertEq(IERC20(NEW_COIN).balanceOf(DEAD) - deadBefore, l.totalBuybackTokensBurned());
+    }
+
+    /// @dev Like hook C, hook D pays holders through a separate rewards contract, so a holder split is refused.
+    function test_hookDWithHolderShareIsRefused() public {
+        address dev = source.creator(NEW_HOLDERS, bytes32(0));
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.HoldersSplitActive.selector);
+        factory.deploy(_params(NEW_HOLDERS, address(0)));
+    }
+
+    function test_hookDStewardHandsTheRoleBack() public {
+        Lodestar l = _activate(NEW_COIN, address(0));
+        address next = makeAddr("next");
+        vm.prank(l.steward());
+        l.transferCreatorOut(next);
+        assertEq(source.creator(NEW_COIN, bytes32(0)), next);
+        assertFalse(l.isCreator());
     }
 
     function test_buybackThroughTheRealPool() public {

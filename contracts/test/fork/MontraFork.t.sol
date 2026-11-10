@@ -78,7 +78,12 @@ contract MontraForkTest is ForkBase {
         assertEq(source.payer(ELYSA), address(0), "the hook pays its own fees");
         assertEq(source.creator(ELYSA, id), IMontraHook(HOOK).recipientOf(id));
         assertEq(source.swapCostBps(ELYSA, id), 100);
-        assertEq(source.swapCostBps(UMBRA, bytes32(0)), 200);
+        // UMBRA's buy fee is live on the hook (2% on November 4, 1.8% on November 10), so check it against the hook
+        bytes32 umbraId = IMontraToken(UMBRA).poolId();
+        assertEq(
+            source.swapCostBps(UMBRA, bytes32(0)), (IMontraHook(HOOK).currentBuyFeeRate(umbraId) + 99) / 100
+        );
+        assertGe(source.swapCostBps(UMBRA, bytes32(0)), 100);
         assertEq(source.swapCostBps(ROCCO, bytes32(0)), 1000);
         assertEq(source.holdersShareBps(ELYSA, id), 0);
         (address target, bytes4 sel) = source.dividendClaim(ELYSA);

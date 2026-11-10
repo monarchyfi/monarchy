@@ -20,6 +20,8 @@ contract BoxaForkTest is ForkBase {
     address internal constant PAIRS = 0xB3E25CDf4a2f42e7f37aB3aE43Bfb90EE8052AcC;
     address internal constant MEME = 0xD2f8e16ba85e9D160724e893B3ebCe53D00E6Acc;
     address internal constant UNI = 0x00C002Cdae688F39a90CF2AD74c59421C9502aCC;
+    // Boxa's newer launcher (0x5DA7…03ed) since November 9: the uni hook's functions with a shorter pools(id), the same owner
+    address internal constant UNI2 = 0x10F11002b148BE522005f9b5D666bef339392aEC;
     address internal constant PM = 0x06C63714fBf1F5753017123E2FcfdEde4540B2c4;
     address internal constant UNI_PM = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
 
@@ -38,18 +40,23 @@ contract BoxaForkTest is ForkBase {
     // meme-pairs hook quoted in another Boxa coin, and a pairs coin quoted in KNTQ
     address internal constant HELYCAT = 0xA623D1B33E4F80fF8D3F4217552cC55dd1434EDf;
     address internal constant KNTQU = 0xE7A130ceA4E58d068897A26f0622024F138cF3Cf;
+    // newer uni hook: 100% creator, with fees already owed to the creator
+    address internal constant NEW_CREATOR = 0xD97352De010Aaf0eAE348c1d4Fce5d81170C729A;
+    // newer uni hook: 90% creator, 10% holders
+    address internal constant NEW_HOLDERS = 0xAB1aFBB0a48E87DEF36a01927EfEb78862cbB9CE;
 
     BoxaFeeSource internal source;
     LodestarFactory internal factory;
 
     function setUp() public {
         if (!_fork()) return;
-        address[] memory hooks = new address[](4);
-        uint8[] memory kinds = new uint8[](4);
+        address[] memory hooks = new address[](5);
+        uint8[] memory kinds = new uint8[](5);
         (hooks[0], kinds[0]) = (MAIN, 1);
         (hooks[1], kinds[1]) = (PAIRS, 2);
         (hooks[2], kinds[2]) = (MEME, 2);
         (hooks[3], kinds[3]) = (UNI, 3);
+        (hooks[4], kinds[4]) = (UNI2, 4);
         source = new BoxaFeeSource(observer, address(this), hooks, kinds);
         factory = _factory(IFeeSource(address(source)));
     }
@@ -155,6 +162,77 @@ contract BoxaForkTest is ForkBase {
         l.distribute();
         assertEq(IBoxaHook(UNI).claimable(address(l), address(0)), 0);
         assertEq(l.totalHoldersQuote() + l.totalTreasuryQuote() + l.buybackReserve(), owedQ);
+    }
+
+    /// @dev The newer uni hook reads like the uni hook: pool words, fee, pool manager and price.
+    function test_newerUniHookViews() public view {
+        (bytes32 id, address hook,) = source.resolve(NEW_CREATOR, address(0));
+        assertEq(hook, UNI2);
+        assertEq(id, IBoxaHook(UNI2).poolOf(NEW_CREATOR));
+        (, V4FeeSource.HookInfo memory info) = source.hookOf(NEW_CREATOR);
+        assertEq(info.poolManager, UNI_PM);
+        assertEq(source.holdersShareBps(NEW_CREATOR, id), 0);
+        assertEq(source.holdersShareBps(NEW_HOLDERS, _id(NEW_HOLDERS)), 1000);
+        assertGt(source.swapCostBps(NEW_CREATOR, id), 0);
+        (uint160 spot,, uint128 liq) = source.prices(NEW_CREATOR, id);
+        assertGt(spot, 0);
+        assertGt(liq, 0);
+        (address target, bytes4 sel) = source.dividendClaim(NEW_HOLDERS);
+        assertEq(target, address(0));
+        assertEq(sel, bytes4(0));
+    }
+
+    /// @dev On the newer uni hook too, fees the creator earned before the handover stay the creator's.
+    function test_newerUniHookClaimAndDistribute() public {
+        address dev = source.creator(NEW_CREATOR, _id(NEW_CREATOR));
+        uint256 devOwed = IBoxaHook(UNI2).claimable(dev, address(0));
+        assertGt(devOwed, 0);
+        Lodestar l = _activate(NEW_CREATOR, address(0));
+        assertEq(IBoxaHook(UNI2).claimable(dev, address(0)), devOwed, "the dev's earlier fees stay the dev's");
+        _volume(source, NEW_CREATOR, 0.5 ether, 6);
+        uint256 owedQ = IBoxaHook(UNI2).claimable(address(l), address(0));
+        assertGt(owedQ, 0);
+        l.distribute();
+        assertEq(IBoxaHook(UNI2).claimable(address(l), address(0)), 0);
+        assertEq(l.totalHoldersQuote() + l.totalTreasuryQuote() + l.buybackReserve(), owedQ);
+        assertEq(l.totalHoldersQuote(), owedQ * HOLDERS_BPS / 10_000);
+    }
+
+    function test_newerUniHookBuyback() public {
+        Lodestar l = _activate(NEW_CREATOR, address(_swapper(UNI_PM)));
+        _volume(source, NEW_CREATOR, 0.5 ether, 10);
+        uint256 deadBefore = IERC20(NEW_CREATOR).balanceOf(DEAD);
+        l.distribute();
+        skip(31 minutes);
+        l.distribute();
+        assertGt(l.totalBuybackTokensBurned(), 0);
+        assertEq(IERC20(NEW_CREATOR).balanceOf(DEAD) - deadBefore, l.totalBuybackTokensBurned());
+    }
+
+    /// @dev The newer uni hook's holder share never reached a holder on the fork, so Exile can't pass it on: refused.
+    /// (Boxa itself answers this coin's `proposeCreator` with NotAuthorized, so the proposal is mocked here.)
+    function test_newerUniHookWithHolderShareIsRefused() public {
+        bytes32 id = _id(NEW_HOLDERS);
+        address dev = source.creator(NEW_HOLDERS, id);
+        (address predicted,) = factory.predict(NEW_HOLDERS, address(0));
+        vm.mockCall(
+            address(source), abi.encodeCall(source.pendingCreator, (NEW_HOLDERS, id)), abi.encode(predicted)
+        );
+        vm.prank(dev);
+        vm.expectRevert(LodestarFactory.HoldersSplitActive.selector);
+        factory.deploy(_params(NEW_HOLDERS, address(0)));
+    }
+
+    function test_newerUniHookStewardProposesAndCancels() public {
+        Lodestar l = _activate(NEW_CREATOR, address(0));
+        address next = makeAddr("next");
+        vm.startPrank(l.steward());
+        l.transferCreatorOut(next);
+        assertEq(source.pendingCreator(NEW_CREATOR, _id(NEW_CREATOR)), next);
+        l.transferCreatorOut(address(0));
+        assertEq(source.pendingCreator(NEW_CREATOR, _id(NEW_CREATOR)), address(0));
+        vm.stopPrank();
+        assertTrue(l.isCreator());
     }
 
     function test_buybackThroughTheRealPool() public {

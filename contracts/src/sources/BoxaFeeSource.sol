@@ -13,7 +13,7 @@ import {IBoxaHook} from "../interfaces/ILaunchpadHooks.sol";
 /// `proposeCreator(poolId, next)` from the creator (`next = 0` cancels), then `acceptCreator(poolId)` from `next`.
 /// Holders' dividends are claimed on the hook too, `claimRewards(token, recipient)` from the holder.
 ///
-/// Four hooks in three shapes, all read from Boxa's site code and checked against the chain on November 4, 2026:
+/// Five hooks in four shapes, read from Boxa's site code and checked against the chain on November 4 and 10, 2026:
 /// - `KIND_MAIN`, the v4 hook (BOXA's): `claim(recipient)`, `claimable(payee)`. `pools(id)` is
 ///   (token, creator, pendingCreator, creatorBps, buybackBps, holdersBps, antiSnipe, launchTime, buyFeePips,
 ///   sellFeePips).
@@ -24,12 +24,19 @@ import {IBoxaHook} from "../interfaces/ILaunchpadHooks.sol";
 ///   `claimable(payee, currency)` (note the order), `feePips(id)`, and `pools(id)` = (token, quote, creator,
 ///   pendingCreator, creatorBps, buybackBps, holdersBps, extraCutBps, buyExtraPips, sellExtraPips, launchTime,
 ///   antiSnipe, quoteIs0).
+/// - `KIND_UNI2`, the newer launcher's hook (since November 9, 2026, on the official pool manager): the uni hook's
+///   functions, with `pools(id)` one word shorter (it ends launchTime, then one flag). The fields the adapter reads,
+///   token to holdersBps, sit where they do on the uni hook. Its holder share is held on the hook and handed to the
+///   coin lazily, and on a mainnet fork on November 10, 2026 that hand-off paid holders nothing (`claimRewards`
+///   reverted for every holder), so Exile can't be shown to pass it on: a coin there with a holder share is refused,
+///   as on Kleos's multi-quote hook.
 /// Every pool key is (HYPE, coin, fee 0, tick spacing 200, hook), checked against the hook's `poolOf(coin)`.
 /// Version 1 supports HYPE-quoted pools only; a coin paired with another token can't be activated.
 contract BoxaFeeSource is V4FeeSource {
     uint8 public constant KIND_MAIN = 1;
     uint8 public constant KIND_PAIRS = 2;
     uint8 public constant KIND_UNI = 3;
+    uint8 public constant KIND_UNI2 = 4;
 
     int24 internal constant TICK_SPACING = 200;
     uint256 internal constant PIPS_PER_BPS = 100;
@@ -72,9 +79,11 @@ contract BoxaFeeSource is V4FeeSource {
         return _word(w, l.holders);
     }
 
-    /// @dev Boxa keeps holder dividends on the hook: the holder calls `claimRewards(token, recipient)` there.
+    /// @dev Boxa keeps holder dividends on the hook: the holder calls `claimRewards(token, recipient)` there. None on
+    /// the newer uni hook (see above), so a holder split there is refused at deploy.
     function dividendClaim(address token) external view returns (address, bytes4) {
-        (address hook,) = _hookOfChecked(token);
+        (address hook, uint8 kind) = _hookOfChecked(token);
+        if (kind == KIND_UNI2) return (address(0), bytes4(0));
         return (hook, CLAIM_REWARDS_TO);
     }
 
@@ -107,7 +116,7 @@ contract BoxaFeeSource is V4FeeSource {
         return _one(hook, abi.encodeCall(IBoxaHook.acceptCreator, (poolId)));
     }
 
-    /// @dev `next = 0` cancels a pending proposal (checked on all four hooks).
+    /// @dev `next = 0` cancels a pending proposal (checked on all five hooks).
     function transferOutCalls(address token, bytes32 poolId, address next)
         external
         view
@@ -120,7 +129,7 @@ contract BoxaFeeSource is V4FeeSource {
     // ---------------------------------------------------------------- internals
 
     function _maxKind() internal pure override returns (uint8) {
-        return KIND_UNI;
+        return KIND_UNI2;
     }
 
     function _poolKey(address token, address hook, uint8 kind)
@@ -177,6 +186,9 @@ contract BoxaFeeSource is V4FeeSource {
         if (kind == KIND_PAIRS) {
             return Layout({words: 11, quote: 1, creator: 2, pending: 3, holders: 6, buyFee: 9});
         }
-        return Layout({words: 13, quote: 1, creator: 2, pending: 3, holders: 6, buyFee: 0});
+        if (kind == KIND_UNI) {
+            return Layout({words: 13, quote: 1, creator: 2, pending: 3, holders: 6, buyFee: 0});
+        }
+        return Layout({words: 12, quote: 1, creator: 2, pending: 3, holders: 6, buyFee: 0});
     }
 }

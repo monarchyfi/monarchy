@@ -164,7 +164,7 @@ contract V4Test is Test {
         vm.expectRevert(V4FeeSource.BadKind.selector);
         src.addHook(address(h2), 0);
         vm.expectRevert(V4FeeSource.BadKind.selector);
-        src.addHook(address(h2), 4);
+        src.addHook(address(h2), 5); // Boxa has four kinds
         vm.expectRevert(V4FeeSource.ZeroAddress.selector);
         src.addHook(address(0), 1);
         vm.prank(address(0xBAD));
