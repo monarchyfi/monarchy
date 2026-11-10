@@ -9,7 +9,7 @@ import { tagline, TierBadge } from "../components/Tiers";
 import { Addr, Amt, Badge, Card, Skel, Stat } from "../components/Ui";
 import { isMonarchy, MONARCHY_SETTINGS } from "../lib/constants";
 import { useDeployment } from "../lib/deployments";
-import { fmt, label, mult } from "../lib/format";
+import { fmt, label, mult, pct } from "../lib/format";
 import { POLL, usePageTitle } from "../lib/hooks";
 import { dayLabel, useDripDays, useLockedTotal, useLodestarCore } from "../lib/monarchy";
 import { days } from "./Home";
@@ -56,6 +56,8 @@ export function KingdomPage() {
   const tiers = isMonarchy(core.token) && pool ? pool.tiers.map((t) => ({ ...t, name: label(t.label) })) : MONARCHY_SETTINGS.tiers;
   const topBps = Math.max(...tiers.map((t) => t.multiplierBps));
   const burnShare = dead !== undefined && supply ? `${fmt((dead * 10_000n) / supply, 2, 2)}% of supply` : undefined;
+  // MONARCHY's split: read from its router once it is live, the planned one before
+  const split = isMonarchy(core.token) && cfg ? cfg : MONARCHY_SETTINGS;
 
   return (
     <div className="page">
@@ -107,7 +109,7 @@ export function KingdomPage() {
           ours={
             live && (
               <>
-                <span>Holders of MONARCHY can lock it in Exile for rewards: the holder share of every fee, bigger for longer locks.</span>
+                <span>Holders of MONARCHY can lock it in Exile for {pct(split.holdersBps)} of every fee, with a bigger share for longer locks.</span>
                 <Link className="feature-ours-go" to={core.token ? `/garden?token=${core.token}` : "/garden"}>
                   See its locks in the Garden <span aria-hidden="true">→</span>
                 </Link>
@@ -128,7 +130,7 @@ export function KingdomPage() {
           ours={
             live && (
               <span>
-                Its Team Treasury share streams out here in the open, never in one lump: <Amt value={treasury} decimals={qd} symbol={qs} /> so far.
+                Its {pct(split.treasuryBps)} Team Treasury share streams out here in the open, never in one lump: <Amt value={treasury} decimals={qd} symbol={qs} /> so far.
               </span>
             )
           }

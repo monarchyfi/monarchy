@@ -77,12 +77,12 @@ The MONARCHY token gets no special treatment. It launches on Ascend like any oth
 
 | | How MONARCHY uses it |
 |---|---|
-| **Exile** | Holders lock MONARCHY to earn the holder share of every fee, by tier from Peasant to Monarch. |
-| **Sandfall** | The Team Treasury share streams to the team in the open, never in one lump. |
-| **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers, and the quote side goes to holder rewards, buyback and burn and the Team Treasury. |
+| **Exile** | Holders lock MONARCHY to earn 70% of every fee, by tier from Peasant to Monarch. |
+| **Sandfall** | The 10% Team Treasury share streams to the team in the open, never in one lump. |
+| **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers, and the quote side is split 70% to holder rewards, 20% to buyback and burn and 10% to the Team Treasury. |
 | **Garden** | Monarchy's analytics page lists every lock, vesting stream and fee router, MONARCHY's included, live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden). Locks and streams sit under MONARCHY and Others, every table filters by token address or symbol, and each router shows any change still waiting out its timelock. |
 
-On testnet, Sample Token (SMPL) stands in for MONARCHY with exactly this setup.
+On testnet, Sample Token (SMPL) stands in for MONARCHY with the same setup, at Monarchy's default split of 50% to holders, 20% to buyback and burn and 30% to the treasury.
 
 ## How it works
 
@@ -128,7 +128,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and [SECURI
 
 ## Live on Elysium testnet
 
-Sample Token (SMPL) is launched on Ascend's live testnet launchpad with MONARCHY's planned settings: a 20/50/30 split of quote fees between buyback and burn, holders and the Team Treasury, token-side fees paid to Exile lockers, and the 0.5x/1x/2x/4x tiers. Its creator role is held by a Lodestar and locked to it forever. Every feature has been exercised on chain through the real PancakeSwap Infinity pool: an EMA-guarded buyback and burn, holder rewards in both the quote and the token dripping to Exile locks at all four tiers, the Team Treasury stream, lock extension, a config change held by its 12 hour timelock, and a creator role that refuses to move except through the 7 day upgrade path. A second token, Sample Stock Token (SMPLS), is quoted in a mock stock token and burns its token-side fees instead, so both routes are live; its buyback, holder rewards and treasury run in the stock token. Contract sources are verified on the explorer.
+Sample Token (SMPL) is launched on Ascend's live testnet launchpad with Monarchy's default settings: a 20/50/30 split of quote fees between buyback and burn, holders and the Team Treasury, token-side fees paid to Exile lockers, and the 0.5x/1x/2x/4x tiers. Its creator role is held by a Lodestar and locked to it forever. Every feature has been exercised on chain through the real PancakeSwap Infinity pool: an EMA-guarded buyback and burn, holder rewards in both the quote and the token dripping to Exile locks at all four tiers, the Team Treasury stream, lock extension, a config change held by its 12 hour timelock, and a creator role that refuses to move except through the 7 day upgrade path. A second token, Sample Stock Token (SMPLS), is quoted in a mock stock token and burns its token-side fees instead, so both routes are live; its buyback, holder rewards and treasury run in the stock token. Contract sources are verified on the explorer.
 
 | Contract | Address |
 |---|---|
