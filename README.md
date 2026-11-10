@@ -4,7 +4,7 @@
 
 # Monarchy
 
-### Lock to earn. Vest in the open. For coins on supported launchpads.
+### Lock and stream any token on Elysium. Lock to earn on supported launchpads.
 
 [![CI: GitHub Actions](https://img.shields.io/badge/CI-GitHub%20Actions-111111.svg)](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml)
 [![Tests: 241 passing](https://img.shields.io/badge/Foundry-241%20tests%20passing-111111.svg)](contracts/test)
@@ -13,7 +13,7 @@
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](LICENSE)
 
-**Lock a coin and earn its creator fees, more the longer you lock. Vest team tokens on a schedule anyone can check. See every lock, stream and payout in the Garden. Monarchy takes nothing.**
+**Lock any token, LP or NFT until a date you choose. Stream tokens to a team, contributors or a treasury on a schedule anyone can check. On supported launchpads, lock a coin and earn its creator fees, more the longer you lock. Everything shows live in the Garden, and Monarchy takes nothing.**
 
 [Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Supported launchpads](#supported-launchpads) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
 
@@ -23,7 +23,19 @@
 
 ---
 
-## Why Monarchy
+## Tools for anyone on Elysium
+
+You don't need a launchpad, a fee router or anyone's permission to use Monarchy. Exile and Sandfall are open contracts that work with any token on Elysium, and the site has a form for each. There are no fees and no sign-up: the contracts hold the assets and release them on the dates set when they went in.
+
+| | What you can do | Good for |
+|---|---|---|
+| **Lock** ([Exile](https://monarchy.fi/exile)) | Lock any ERC-20 (LP tokens included), ERC-721 or ERC-1155 until a date you pick. A lock can be extended but never shortened, cancelled or moved, and only the wallet that locked it can withdraw it, once the date passes. | Locking liquidity, locking team or treasury supply, showing holders that tokens can't be sold before a date |
+| **Stream** ([Sandfall](https://monarchy.fi/sandfall)) | Stream any non-rebasing ERC-20 or native HYPE to a recipient: linearly, after a cliff, or in daily, weekly or monthly steps. Whether the stream can ever be cancelled is fixed when it's created and shown on chain. | Team and contributor vesting, investor unlocks, paying a treasury or a grant over time |
+| **Check** ([Garden](https://monarchy.fi/garden)) | See every lock and stream, by token, live from the contracts, with what unlocks when. | Proving a lock or a vesting schedule to anyone, with a link |
+
+A coin whose Lodestar collects holder dividends is locked in its reward pool rather than as a plain lock, so the dividends reach its lockers. Everything else on Elysium can be locked or streamed as is.
+
+## Lock to earn on supported launchpads
 
 Launchpads on Elysium already split each coin's trading fee between the creator, the platform and often a buyback, and Ascend now offers fee splits as well, so a fee split on its own isn't new. What none of them give holders is a reason to stay. Monarchy is the locking, vesting and rewards layer for coins on the [supported launchpads](#supported-launchpads): holders lock and earn the coin's creator fees, team tokens vest in public, and the Garden shows all of it live from the contracts.
 
