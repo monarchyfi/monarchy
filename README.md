@@ -29,11 +29,13 @@ You don't need a launchpad, a fee router or anyone's permission to use Monarchy.
 
 | | What you can do | Good for |
 |---|---|---|
-| **Lock** ([Exile](https://monarchy.fi/exile)) | Lock any ERC-20 (LP tokens included), ERC-721 or ERC-1155 until a date you pick. A lock can be extended but never shortened, cancelled or moved, and only the wallet that locked it can withdraw it, once the date passes. | Locking liquidity, locking team or treasury supply, showing holders that tokens can't be sold before a date |
+| **Lock** ([Exile](https://monarchy.fi/exile)) | Lock any ERC-20 (LP tokens included), ERC-721 or ERC-1155 until a date you pick. A lock can be extended but never shortened, cancelled or moved, and only the wallet that locked it can withdraw it, once the date passes. If the coin is enrolled in Lodestar, the same lock [earns a share of its fees](#lock-to-earn-on-supported-launchpads). | Locking liquidity, locking team or treasury supply, showing holders that tokens can't be sold before a date |
 | **Stream** ([Sandfall](https://monarchy.fi/sandfall)) | Stream any non-rebasing ERC-20 or native HYPE to a recipient: linearly, after a cliff, or in daily, weekly or monthly steps. Whether the stream can ever be cancelled is fixed when it's created and shown on chain. | Team and contributor vesting, investor unlocks, paying a treasury or a grant over time |
 | **Check** ([Garden](https://monarchy.fi/garden)) | See every lock and stream, by token, live from the contracts, with what unlocks when. | Proving a lock or a vesting schedule to anyone, with a link |
 
 A coin whose Lodestar collects holder dividends is locked in its reward pool rather than as a plain lock, so the dividends reach its lockers. Everything else on Elysium can be locked or streamed as is.
+
+Monarchy builds on the same two tools. A coin's creator enrolls it in Lodestar, which pays its creator fees to the holders who lock it in Exile and streams the team's share through Sandfall, and MONARCHY itself [runs on exactly that](#monarchy-runs-on-monarchy).
 
 ## Lock to earn on supported launchpads
 

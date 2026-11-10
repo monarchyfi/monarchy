@@ -238,7 +238,7 @@ p.small { margin: 10px 0 0; line-height: 1.5; }
 /* ------------------------------------------------------------------ landing: one screen, no scroll */
 .app-home { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
 .app-home main { min-height: 0; display: flex; }
-.landing { flex: 1; min-height: 0; width: 100%; max-width: 1600px; margin: 0 auto; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; justify-items: center; text-align: center; padding: clamp(12px, 2.6vh, 30px) clamp(16px, 2.6vw, 40px) 0; }
+.landing { flex: 1; min-height: 0; width: 100%; max-width: 1600px; margin: 0 auto; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto auto; justify-items: center; text-align: center; padding: clamp(12px, 2.6vh, 30px) clamp(16px, 2.6vw, 40px) 0; }
 .wordmark { font: 800 clamp(30px, min(6.2vw, 7.6vh), 92px)/1 var(--display); letter-spacing: 0.06em; margin: 0 0 0 0.06em; text-transform: uppercase; }
 .ascii-crown-box { width: 100%; height: 100%; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .ascii-crown { margin: 0; font-family: var(--mono); font-weight: 700; line-height: 1; letter-spacing: 0; color: var(--text); white-space: pre; user-select: none; text-align: left; }
@@ -249,6 +249,10 @@ p.small { margin: 10px 0 0; line-height: 1.5; }
 .tagline::before { content: "["; margin-right: 0.34em; color: var(--faint); }
 .tagline::after { content: "]"; margin: 0 -0.36em 0 0.34em; color: var(--faint); }
 .landing-sub { margin: clamp(4px, 1vh, 10px) 0 clamp(14px, 3vh, 32px); color: var(--muted); font: 400 clamp(16px, 1.25vw, 19px)/1.45 var(--serif); letter-spacing: 0.01em; text-wrap: balance; }
+.landing-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0 0 clamp(14px, 3vh, 30px); }
+.landing-tools a { padding: 8px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--muted); text-decoration: none; font: 13px var(--mono); letter-spacing: 0.02em; transition: border-color 0.15s, color 0.15s; }
+.landing-tools a b { color: var(--gold); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-right: 4px; }
+.landing-tools a:hover { border-color: var(--white); color: var(--text); }
 .landing-links { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0 16px; border-top: 1px solid var(--line); font: 12px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .landing-out { display: inline-flex; gap: 10px; }
 .landing-out a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--line-2); color: var(--text); text-decoration: none; border-radius: var(--radius-sm); transition: border-color 0.15s; }
