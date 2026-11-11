@@ -11,7 +11,7 @@ export function TokenFeeFlow() {
   const core = useLodestarCore();
   const drip = useDripDays();
   const cfg = useReadContract({ address: core.lodestar, abi: lodestarAbi, functionName: "config", query: { enabled: !!core.lodestar && isMonarchy(core.token), ...POLL.query } });
-  // a sample token stands in for MONARCHY on testnet, so show the settings MONARCHY will launch with until it is live
+  // a sample token stands in for MNRCHY on testnet, so show the settings MNRCHY will launch with until it is live
   const c = isMonarchy(core.token) ? cfg.data : MONARCHY_SETTINGS;
   return <FeeFlow drip={drip} burn={c?.burnBps} holders={c?.holdersBps} treasury={c?.treasuryBps} tokenToHolders={c?.tokenToHolders} />;
 }
@@ -20,13 +20,13 @@ type Dest = { key: string; mark: string; title: string; tag: string; body: strin
 
 /** A coin's creator fees, through Lodestar, out to the four places they can go: token-side fees on one route, quote-side fees split three ways, lockers first. */
 export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { drip: number; burn?: number; holders?: number; treasury?: number; tokenToHolders?: boolean }) {
-  // the live numbers are MONARCHY's own split; every token on Lodestar picks its own
-  const share = (bps?: number) => (bps === undefined ? "Quote share" : `${pct(bps)} for MONARCHY`);
+  // the live numbers are MNRCHY's own split; every token on Lodestar picks its own
+  const share = (bps?: number) => (bps === undefined ? "Quote share" : `${pct(bps)} for MNRCHY`);
   const tokenSide: Dest = {
     key: "fire",
     mark: "[+|x]",
     title: "Sent to lockers / burned",
-    tag: tokenToHolders === undefined ? "All token-side fees" : `All token-side fees, ${tokenToHolders ? "sent to lockers" : "burned"} for MONARCHY`,
+    tag: tokenToHolders === undefined ? "All token-side fees" : `All token-side fees, ${tokenToHolders ? "sent to lockers" : "burned"} for MNRCHY`,
     body: `Sent to Exile lockers by default, paid in the token itself over ${drip} days. The creator can burn all of it instead.`,
   };
   const quoteSide: Dest[] = [
@@ -45,7 +45,7 @@ export function FeeFlow({ drip, burn, holders, treasury, tokenToHolders }: { dri
         <h2 id="flow-title">How lockers get paid</h2>
         <p className="muted">
           A Lodestar takes a coin's creator fees and pays them out on a public path: to the holders who lock, and any share the creator picks to buyback
-          and burn or a Team Treasury. Nothing stops at Monarchy. The percentages below are MONARCHY's own, and each coin picks its own when it activates.
+          and burn or a Team Treasury. Nothing stops at Monarchy. The percentages below are MNRCHY's own, and each coin picks its own when it activates.
         </p>
       </div>
       <div className="flow-body">

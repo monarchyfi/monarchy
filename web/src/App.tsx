@@ -38,7 +38,7 @@ function LinkLabel({ l }: { l: (typeof LINKS)[number] }) {
   );
 }
 
-/** The MONARCHY token's contract address, shortened, and a click copies it. Until launch it reads "CA: soon". */
+/** The MNRCHY token's contract address, shortened, and a click copies it. Until launch it reads "CA: soon". */
 /** Copies text, falling back to a hidden textarea where the async clipboard is blocked (an http page, an iframe). */
 async function copyText(text: string): Promise<boolean> {
   try {

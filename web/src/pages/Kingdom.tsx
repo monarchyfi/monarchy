@@ -49,14 +49,14 @@ export function KingdomPage() {
   const dripPerDay = pool ? (pool.periodFinish > now ? (pool.rewardRate * 86400n) / 10n ** 18n : 0n) : undefined;
   const drip = useDripDays();
   const locked = useLockedTotal(core.token);
-  // until MONARCHY is the token this deployment's Lodestar routes for, the sample token's numbers fill the card
+  // until MNRCHY is the token this deployment's Lodestar routes for, the sample token's numbers fill the card
   const live = !!d && !!core.lodestar;
   const standIn = !!ts && !!core.token && !isMonarchy(core.token);
-  // the court shows the tiers MONARCHY will launch with until its own router is live
+  // the court shows the tiers MNRCHY will launch with until its own router is live
   const tiers = isMonarchy(core.token) && pool ? pool.tiers.map((t) => ({ ...t, name: label(t.label) })) : MONARCHY_SETTINGS.tiers;
   const topBps = Math.max(...tiers.map((t) => t.multiplierBps));
   const burnShare = dead !== undefined && supply ? `${fmt((dead * 10_000n) / supply, 2, 2)}% of supply` : undefined;
-  // MONARCHY's split: read from its router once it is live, the planned one before
+  // MNRCHY's split: read from its router once it is live, the planned one before
   const split = isMonarchy(core.token) && cfg ? cfg : MONARCHY_SETTINGS;
 
   return (
@@ -109,7 +109,7 @@ export function KingdomPage() {
           ours={
             live && (
               <>
-                <span>Holders of MONARCHY can lock it in Exile for {pct(split.holdersBps)} of every fee, with a bigger share for longer locks.</span>
+                <span>Holders of MNRCHY can lock it in Exile for {pct(split.holdersBps)} of every fee, with a bigger share for longer locks.</span>
                 <Link className="feature-ours-go" to={core.token ? `/garden?token=${core.token}` : "/garden"}>
                   See its locks in the Garden <span aria-hidden="true">→</span>
                 </Link>
@@ -149,7 +149,7 @@ export function KingdomPage() {
             live && (
               <>
                 <span>
-                  Holds MONARCHY's creator role at <Addr address={core.lodestar} />.
+                  Holds MNRCHY's creator role at <Addr address={core.lodestar} />.
                 </span>
                 {lockedUntil === undefined ? <Skel w="10em" /> : lockedUntil >= 2n ** 63n ? <Badge tone="gold">Locked to it forever</Badge> : <Badge tone="amber">Not locked yet</Badge>}
               </>
@@ -193,10 +193,10 @@ export function KingdomPage() {
           }
         >
           <p className="kingdom-lead">
-            Most coins ask holders to trust the team with the fees. <b>MONARCHY runs on its own features instead</b>, the same
+            Most coins ask holders to trust the team with the fees. <b>MNRCHY runs on its own features instead</b>, the same
             contracts Monarchy offers every coin, with the same zero fees and the same timelocks. Nothing here is special to it,
-            and each feature above shows how MONARCHY uses it.
-            {standIn && <span className="faint"> Until MONARCHY launches, the sample token {ts} stands in.</span>}
+            and each feature above shows how MNRCHY uses it.
+            {standIn && <span className="faint"> Until MNRCHY launches, the sample token {ts} stands in.</span>}
           </p>
           <div className="stats stats-3">
             <Stat className="stat-feature" label="Paid to lockers" value={<Amt value={holders} decimals={qd} symbol={qs} />} hint={dripPerDay === undefined ? <Skel w="8em" /> : `${fmt(dripPerDay, qd)} ${qs ?? ""} a day dripping now`} />
@@ -226,8 +226,8 @@ function tierBars(bps: number, topBps: number): string {
   return "▮".repeat(n) + "▯".repeat(8 - n);
 }
 
-/** One feature, and under it how MONARCHY itself uses it. The "Open" link stretches over the whole card, and the links
- * inside the MONARCHY part sit above it. */
+/** One feature, and under it how MNRCHY itself uses it. The "Open" link stretches over the whole card, and the links
+ * inside the MNRCHY part sit above it. */
 function Feature({ to, title, kicker, icon, cls, ours, children }: { to: string; title: string; kicker: string; icon: ReactNode; cls: string; ours?: ReactNode; children: ReactNode }) {
   return (
     <div className={`card feature ${cls}`}>
@@ -241,7 +241,7 @@ function Feature({ to, title, kicker, icon, cls, ours, children }: { to: string;
       <p>{children}</p>
       {ours && (
         <div className="feature-ours">
-          <span className="feature-ours-k">How MONARCHY uses it</span>
+          <span className="feature-ours-k">How MNRCHY uses it</span>
           {ours}
         </div>
       )}

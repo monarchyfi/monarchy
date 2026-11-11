@@ -329,7 +329,7 @@ p.small { margin: 10px 0 0; line-height: 1.5; }
 .feature.nl-exile:hover .feature-icon svg { animation: gate-drop-once 0.5s cubic-bezier(0.5, 0, 0.75, 1.4); }
 @keyframes gate-drop-once { from { transform: translateY(-115%); } to { transform: translateY(0); } }
 .feature { position: relative; }
-/* the three cards share rows, so their MONARCHY parts and Open links line up whatever each one says */
+/* the three cards share rows, so their MNRCHY parts and Open links line up whatever each one says */
 .grid3 > .feature { display: grid; grid-template-rows: subgrid; grid-row: span 5; row-gap: 18px; align-content: start; padding: 30px 28px 30px; }
 .grid3 > .feature > .feature-go { align-self: end; margin-top: 44px; }
 .feature-go { font: 600 12.5px var(--mono); text-transform: uppercase; letter-spacing: 0.1em; display: inline-flex; gap: 8px; color: var(--text); text-decoration: none; }

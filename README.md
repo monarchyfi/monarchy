@@ -35,7 +35,7 @@ You don't need a launchpad, a fee router or anyone's permission to use Monarchy.
 
 A coin whose Lodestar collects holder dividends is locked in its reward pool rather than as a plain lock, so the dividends reach its lockers. Everything else on Elysium can be locked or streamed as is.
 
-Monarchy builds on the same two tools. A coin's creator enrolls it in Lodestar, which pays its creator fees to the holders who lock it in Exile and streams the team's share through Sandfall, and MONARCHY itself [runs on exactly that](#monarchy-runs-on-monarchy).
+Monarchy builds on the same two tools. A coin's creator enrolls it in Lodestar, which pays its creator fees to the holders who lock it in Exile and streams the team's share through Sandfall, and MNRCHY itself [runs on exactly that](#monarchy-runs-on-monarchy).
 
 ## Lock to earn on supported launchpads
 
@@ -73,16 +73,16 @@ The Uniswap v4 launchpads on Elysium mainnet already split each coin's trading f
 
 ## Monarchy runs on Monarchy
 
-The MONARCHY token gets no special treatment. It launches on Ascend like any other coin and runs on the same contracts Monarchy offers everyone, with the same zero fees, the same 12 hour timelock and the same 7 day notice before a router can move. Most coins ask holders to trust the team with the fees; MONARCHY's are handled by code anyone can read and check.
+The MNRCHY token gets no special treatment. It launches on Ascend like any other coin and runs on the same contracts Monarchy offers everyone, with the same zero fees, the same 12 hour timelock and the same 7 day notice before a router can move. Most coins ask holders to trust the team with the fees; MNRCHY's are handled by code anyone can read and check.
 
-| | How MONARCHY uses it |
+| | How MNRCHY uses it |
 |---|---|
-| **Exile** | Holders lock MONARCHY to earn 70% of every fee, by tier from Peasant to Monarch. |
+| **Exile** | Holders lock MNRCHY to earn 70% of every fee, by tier from Peasant to Monarch. |
 | **Sandfall** | The 10% Team Treasury share streams to the team in the open, never in one lump. |
 | **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers, and the quote side is split 70% to holder rewards, 20% to buyback and burn and 10% to the Team Treasury. |
-| **Garden** | Monarchy's analytics page lists every lock, vesting stream and fee router, MONARCHY's included, live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden). Locks and streams sit under MONARCHY and Others, every table filters by token address or symbol, and each router shows any change still waiting out its timelock. |
+| **Garden** | Monarchy's analytics page lists every lock, vesting stream and fee router, MNRCHY's included, live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden). Locks and streams sit under MNRCHY and Others, every table filters by token address or symbol, and each router shows any change still waiting out its timelock. |
 
-On testnet, Sample Token (SMPL) stands in for MONARCHY with the same setup, at Monarchy's default split of 50% to holders, 20% to buyback and burn and 30% to the treasury.
+On testnet, Sample Token (SMPL) stands in for MNRCHY with the same setup, at Monarchy's default split of 50% to holders, 20% to buyback and burn and 30% to the treasury.
 
 ## How it works
 
@@ -255,7 +255,7 @@ The keeper (`.github/workflows/distribute.yml`) calls `distribute()` every 3 hou
 | **Working** | Lodestar, Exile and Sandfall live on Elysium testnet with two demo tokens (USDC and stock quotes); burns, buybacks and token rewards to lockers proven on Ascend's pools; web app for all three at monarchy.fi, with the Garden, an analytics page listing every lock, stream and router; docs at docs.monarchy.fi; CI on every change |
 | **Built, not deployed** | Ascend v5, Volta, Montra, ElysPump, Boxa and Kleos support: native HYPE and WHYPE/USDC/KNTQ routing, a dividend harvest in Exile, Uniswap v4 buybacks, Ascend's 48 hour hand-off with an accept step on the site and in the keeper, launching new Ascend coins straight into a router, and mainnet deploy, activation and keeper scripts, tested against the real launchpads on a mainnet fork and rehearsed end to end on a local one |
 | **In progress** | A testnet redeploy with the latest security review fixes |
-| **Before launch** | Third-party security audit, the upgrade multisig shared with the Ascend team, mainnet deploy (after Elysium's public launch on November 9), Monarchy token launch on Ascend |
+| **Before launch** | Third-party security audit, the upgrade multisig shared with the Ascend team, mainnet deploy (after Elysium's public launch on November 9), MNRCHY launch on Ascend (name Monarchy, ticker MNRCHY, paired with KNTQ) |
 | **Next** | ElysPump's first launchpad (its Uniswap v3 coins), kHYPE treasury option, TWAP buybacks, Ascend NFT holder bonus in Exile, an indexer for history and APR charts |
 
 Everything works with Ascend as it is today: a creator launches, then hands over the creator role in two steps. An option on Ascend's launch form to pick a Lodestar up front would make it one step.
