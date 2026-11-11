@@ -528,8 +528,8 @@ function PadActivate({ pads, f, token, predicted, poolId }: { pads: LaunchpadsDe
     return (
       <Card>
         <Empty title="This coin can't be activated">
-          It pays its holders a share of the tax that Exile can't pass on to lockers (a holder share on Kleos's multi-quote hook, paid in
-          stock tokens). Coins without a holder share on that hook work.
+          It pays its holders a share of the tax that Exile can't pass on to lockers: a holder share on Kleos's multi-quote hooks (paid in
+          stock tokens) or on Boxa's newest launcher. Coins on those hooks without a holder share work.
         </Empty>
       </Card>
     );

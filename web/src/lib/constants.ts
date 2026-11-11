@@ -24,12 +24,13 @@ export const CATCH_UP_ALONE_ABOVE_GAS = 2_000_000n;
  * For now it holds the standard burn address so the copy button can be tried; swap in the token's address at launch. */
 export const MONARCHY_CA: `0x${string}` | undefined = "0x000000000000000000000000000000000000dEaD";
 
-/** The settings MONARCHY's own Lodestar will launch with: Monarchy's defaults. While a sample token stands in for
- * MONARCHY, the Kingdom page shows these rather than the sample token's own. */
+/** The settings MONARCHY's own Lodestar will launch with: 70% of the quote-side fees to Exile lockers, 20% to buyback
+ * and burn and 10% to the Team Treasury (other coins start from the form's 50/20/30 and pick their own). While a sample
+ * token stands in for MONARCHY, the Kingdom page shows these rather than the sample token's own. */
 export const MONARCHY_SETTINGS = {
   burnBps: 2000,
-  holdersBps: 5000,
-  treasuryBps: 3000,
+  holdersBps: 7000,
+  treasuryBps: 1000,
   tokenToHolders: true,
   tiers: [
     { name: "Peasant", minDuration: 86400, multiplierBps: 5000 },

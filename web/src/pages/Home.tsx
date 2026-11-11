@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { AsciiCrown } from "../components/AsciiCrown";
 import { usePageTitle } from "../lib/hooks";
 
@@ -12,9 +13,22 @@ export function Home() {
       <h1 className="wordmark">Monarchy</h1>
       <AsciiCrown className="landing-crown" />
       <p className="tagline">Steal the Crown</p>
-      <p className="landing-sub">Lock to earn. The kingdom shares everything with those who stay.</p>
+      <p className="landing-sub">
+        Lock and stream any token on Elysium. Lock a coin enrolled in Lodestar and earn its fees, more the longer you stay.
+      </p>
+      <nav className="landing-tools" aria-label="Tools">
+        <Link to="/exile">
+          <b>Lock</b> any token, LP or NFT
+        </Link>
+        <Link to="/sandfall">
+          <b>Stream</b> any token or HYPE
+        </Link>
+        <Link to="/lodestar">
+          <b>Enroll</b> a coin so its lockers earn
+        </Link>
+      </nav>
       <div className="landing-links">
-        <span className="landing-note">Built on Ascend. Locks, vesting and rewards for lockers. No fees.</span>
+        <span className="landing-note">Free tools for every token on Elysium. Lock to earn on six launchpads. No fees.</span>
         <span className="landing-out">
           <a href="https://docs.monarchy.fi" target="_blank" rel="noreferrer">
             Docs <span aria-hidden="true">↗</span>

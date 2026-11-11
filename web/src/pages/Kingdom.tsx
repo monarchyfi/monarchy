@@ -9,7 +9,7 @@ import { tagline, TierBadge } from "../components/Tiers";
 import { Addr, Amt, Badge, Card, Skel, Stat } from "../components/Ui";
 import { isMonarchy, MONARCHY_SETTINGS } from "../lib/constants";
 import { useDeployment } from "../lib/deployments";
-import { fmt, label, mult } from "../lib/format";
+import { fmt, label, mult, pct } from "../lib/format";
 import { POLL, usePageTitle } from "../lib/hooks";
 import { dayLabel, useDripDays, useLockedTotal, useLodestarCore } from "../lib/monarchy";
 import { days } from "./Home";
@@ -56,6 +56,8 @@ export function KingdomPage() {
   const tiers = isMonarchy(core.token) && pool ? pool.tiers.map((t) => ({ ...t, name: label(t.label) })) : MONARCHY_SETTINGS.tiers;
   const topBps = Math.max(...tiers.map((t) => t.multiplierBps));
   const burnShare = dead !== undefined && supply ? `${fmt((dead * 10_000n) / supply, 2, 2)}% of supply` : undefined;
+  // MONARCHY's split: read from its router once it is live, the planned one before
+  const split = isMonarchy(core.token) && cfg ? cfg : MONARCHY_SETTINGS;
 
   return (
     <div className="page">
@@ -65,9 +67,11 @@ export function KingdomPage() {
           Kingdom
         </h1>
         <p>
-          Monarchy rewards the holders who stay. Lock a coin in Exile and earn a share of its creator fees, more the longer you
-          lock. Vest team tokens through Sandfall on a schedule anyone can check. Every lock, stream and payout shows in the
-          Garden. It works for coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos, and Monarchy keeps none of it.
+          Monarchy is free tooling for every token on Elysium. Lock any token, LP or NFT in Exile until a date you choose, and
+          stream any token or HYPE through Sandfall on a schedule anyone can check, with no launchpad needed. When a coin's
+          creator enrolls it in Lodestar, its creator fees go to the holders who lock it, more the longer they lock. That works
+          for coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos. Every lock, stream and payout shows in the Garden, and
+          Monarchy keeps none of it.
         </p>
       </div>
 
@@ -80,12 +84,12 @@ export function KingdomPage() {
         </li>
         <li className="seal">
           <span className="seal-text">
-            <b>Lock to earn.</b> Holding alone earns nothing. Longer locks earn a bigger share of every fee.
+            <b>Any token.</b> Lock or stream any token on Elysium. No launchpad, router or permission needed.
           </span>
         </li>
         <li className="seal">
           <span className="seal-text">
-            <b>Vesting in the open.</b> Team tokens stream out on a public schedule, and every stream shows whether it can be cancelled.
+            <b>Lock to earn.</b> On a coin enrolled in Lodestar, longer locks earn a bigger share of every fee.
           </span>
         </li>
         <li className="seal">
@@ -105,7 +109,7 @@ export function KingdomPage() {
           ours={
             live && (
               <>
-                <span>Holders of MONARCHY can lock it in Exile for rewards: the holder share of every fee, bigger for longer locks.</span>
+                <span>Holders of MONARCHY can lock it in Exile for {pct(split.holdersBps)} of every fee, with a bigger share for longer locks.</span>
                 <Link className="feature-ours-go" to={core.token ? `/garden?token=${core.token}` : "/garden"}>
                   See its locks in the Garden <span aria-hidden="true">→</span>
                 </Link>
@@ -113,8 +117,9 @@ export function KingdomPage() {
             )
           }
         >
-          Lock any coin. Holding alone earns nothing, and on a coin with a Lodestar longer locks earn a bigger share of its fees,
-          paid as a {dayLabel(drip)} drip. Locks can be extended, never shortened or cancelled, and work for v2 LP and NFTs too.
+          Lock any token, v2 LP or NFT until a date you choose. Locks can be extended, never shortened or cancelled. On a coin
+          enrolled in Lodestar the lock also earns: holding alone earns nothing, and longer locks earn a bigger share of its fees,
+          paid as a {dayLabel(drip)} drip.
         </Feature>
         <Feature
           to="/sandfall"
@@ -125,13 +130,14 @@ export function KingdomPage() {
           ours={
             live && (
               <span>
-                Its Team Treasury share streams out here in the open, never in one lump: <Amt value={treasury} decimals={qd} symbol={qs} /> so far.
+                Its {pct(split.treasuryBps)} Team Treasury share streams out here in the open, never in one lump: <Amt value={treasury} decimals={qd} symbol={qs} /> so far.
               </span>
             )
           }
         >
-          Team and contributor tokens vest on a schedule anyone can read: linear, cliff or monthly, in any token or HYPE. Every
-          stream shows whether its creator can cancel it.
+          Stream any token or HYPE to anyone on a schedule anyone can read: linear, after a cliff, or in daily, weekly or monthly
+          steps. For team and contributor vesting, investor unlocks or a treasury. Every stream shows whether its creator can
+          cancel it.
         </Feature>
         <Feature
           to="/lodestar"

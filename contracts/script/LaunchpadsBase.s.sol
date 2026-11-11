@@ -98,26 +98,30 @@ abstract contract LaunchpadsBase is BaseScript {
             pms[0] = 0x5fb015a49f5b35073f9Ce01C2aDb287A75F89600;
             pms[1] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
         } else if (i == BOXA) {
-            // Boxa (boxa.club): the main hook, the pairs and meme-pairs hooks, and the uni launcher's hook, which
-            // runs on the official pool manager
-            hooks = new address[](4);
-            kinds = new uint8[](4);
+            // Boxa (boxa.club): the main hook, the pairs and meme-pairs hooks, the uni launcher's hook, and the newer
+            // launcher's hook (since November 9, 2026); the last two run on the official pool manager
+            hooks = new address[](5);
+            kinds = new uint8[](5);
             (hooks[0], kinds[0]) = (0xBCc1f22d137C1D98DFa5548E4d4261D7AeE06acC, 1);
             (hooks[1], kinds[1]) = (0xB3E25CDf4a2f42e7f37aB3aE43Bfb90EE8052AcC, 2);
             (hooks[2], kinds[2]) = (0xD2f8e16ba85e9D160724e893B3ebCe53D00E6Acc, 2);
             (hooks[3], kinds[3]) = (0x00C002Cdae688F39a90CF2AD74c59421C9502aCC, 3);
+            (hooks[4], kinds[4]) = (0x10F11002b148BE522005f9b5D666bef339392aEC, 4);
             pms = new address[](2);
             pms[0] = 0x06C63714fBf1F5753017123E2FcfdEde4540B2c4;
             pms[1] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
         } else if (i == KLEOS) {
-            // Kleos (thekleos.xyz): hooks A and B single-quote, hook C multi-quote
-            hooks = new address[](3);
-            kinds = new uint8[](3);
+            // Kleos (thekleos.xyz): hooks A and B single-quote and hook C multi-quote on Kleos's pool manager, and
+            // hook D (hook C's code, since November 9, 2026) on the official one
+            hooks = new address[](4);
+            kinds = new uint8[](4);
             (hooks[0], kinds[0]) = (0x0c835e6A51717a514144d95c7F0a1C640179E0Cc, 1);
             (hooks[1], kinds[1]) = (0x772AccB053609D361593345e361D2a6854Ede8cc, 1);
             (hooks[2], kinds[2]) = (0xD5068e7f4e2D70d5eFbaC6fD28A8407252E1EAcC, 2);
-            pms = new address[](1);
+            (hooks[3], kinds[3]) = (0x0fa71294c909b11A0b805df4763Ba576c69c2acC, 2);
+            pms = new address[](2);
             pms[0] = 0xb308B5df891c300a5f5a5b8fdBC30108bA842490;
+            pms[1] = 0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1;
         } else if (i == MONTRA) {
             // Montra (montramarkets.xyz): its launch hook, the one its registry lists, on the official pool manager
             hooks = new address[](1);

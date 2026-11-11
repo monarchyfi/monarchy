@@ -4,18 +4,18 @@
 
 # Monarchy
 
-### Lock to earn. Vest in the open. For coins on Ascend, Volta, Montra, ElysPump, Boxa and Kleos.
+### Lock and stream any token on Elysium. Lock to earn on supported launchpads.
 
-[![CI](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/monarchy-fi/monarchy/actions/workflows/ci.yml)
-[![Tests: 240 passing](https://img.shields.io/badge/Foundry-240%20tests%20passing-111111.svg)](contracts/test)
+[![CI: GitHub Actions](https://img.shields.io/badge/CI-GitHub%20Actions-111111.svg)](https://github.com/monarchyfi/monarchy/actions/workflows/ci.yml)
+[![Tests: 241 passing](https://img.shields.io/badge/Foundry-241%20tests%20passing-111111.svg)](contracts/test)
 [![Solidity 0.8.28](https://img.shields.io/badge/Solidity-0.8.28-363636.svg)](foundry.toml)
 [![Elysium testnet](https://img.shields.io/badge/Elysium%20testnet-chain%2099801-111111.svg)](https://elysium.kinetiq.xyz/testnet-explorer)
 [![Protocol fees: none](https://img.shields.io/badge/protocol%20fees-none-111111.svg)](#how-it-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](LICENSE)
 
-**Lock a coin and earn its creator fees, more the longer you lock. Vest team tokens on a schedule anyone can check. See every lock, stream and payout in the Garden. Monarchy takes nothing.**
+**Lock any token, LP or NFT until a date you choose. Stream tokens to a team, contributors or a treasury on a schedule anyone can check. On supported launchpads, lock a coin and earn its creator fees, more the longer you lock. Everything shows live in the Garden, and Monarchy takes nothing.**
 
-[Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Volta, Montra, ElysPump, Boxa and Kleos](docs/launchpads.md) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
+[Website](https://monarchy.fi) · [Docs](https://docs.monarchy.fi) · [X](https://x.com/monarchyfi) · [Architecture](docs/ARCHITECTURE.md) · [Supported launchpads](#supported-launchpads) · [Demo script](docs/DEMO.md) · [Testnet contracts](#live-on-elysium-testnet)
 
 <img src="docs/img/site-home.png" alt="The Monarchy home page: four tabs around a crown along the top with the CA chip on the right, the name MONARCHY above a large spinning crown drawn in text characters, and Steal the Crown in gold with the line Lock to earn. The kingdom shares everything with those who stay. below it" width="840" />
 
@@ -23,9 +23,23 @@
 
 ---
 
-## Why Monarchy
+## Tools for anyone on Elysium
 
-Launchpads on Elysium already split each coin's trading fee between the creator, the platform and often a buyback, and Ascend now offers fee splits as well, so a fee split on its own isn't new. What none of them give holders is a reason to stay. Monarchy is the locking, vesting and rewards layer for any coin on Ascend, Volta, Montra, ElysPump, Boxa and Kleos: holders lock and earn the coin's creator fees, team tokens vest in public, and the Garden shows all of it live from the contracts.
+You don't need a launchpad, a fee router or anyone's permission to use Monarchy. Exile and Sandfall are open contracts that work with any token on Elysium, and the site has a form for each. There are no fees and no sign-up: the contracts hold the assets and release them on the dates set when they went in.
+
+| | What you can do | Good for |
+|---|---|---|
+| **Lock** ([Exile](https://monarchy.fi/exile)) | Lock any ERC-20 (LP tokens included), ERC-721 or ERC-1155 until a date you pick. A lock can be extended but never shortened, cancelled or moved, and only the wallet that locked it can withdraw it, once the date passes. If the coin is enrolled in Lodestar, the same lock [earns a share of its fees](#lock-to-earn-on-supported-launchpads). | Locking liquidity, locking team or treasury supply, showing holders that tokens can't be sold before a date |
+| **Stream** ([Sandfall](https://monarchy.fi/sandfall)) | Stream any non-rebasing ERC-20 or native HYPE to a recipient: linearly, after a cliff, or in daily, weekly or monthly steps. Whether the stream can ever be cancelled is fixed when it's created and shown on chain. | Team and contributor vesting, investor unlocks, paying a treasury or a grant over time |
+| **Check** ([Garden](https://monarchy.fi/garden)) | See every lock and stream, by token, live from the contracts, with what unlocks when. | Proving a lock or a vesting schedule to anyone, with a link |
+
+A coin whose Lodestar collects holder dividends is locked in its reward pool rather than as a plain lock, so the dividends reach its lockers. Everything else on Elysium can be locked or streamed as is.
+
+Monarchy builds on the same two tools. A coin's creator enrolls it in Lodestar, which pays its creator fees to the holders who lock it in Exile and streams the team's share through Sandfall, and MONARCHY itself [runs on exactly that](#monarchy-runs-on-monarchy).
+
+## Lock to earn on supported launchpads
+
+Launchpads on Elysium already split each coin's trading fee between the creator, the platform and often a buyback, and Ascend now offers fee splits as well, so a fee split on its own isn't new. What none of them give holders is a reason to stay. Monarchy is the locking, vesting and rewards layer for coins on the [supported launchpads](#supported-launchpads): holders lock and earn the coin's creator fees, team tokens vest in public, and the Garden shows all of it live from the contracts.
 
 On these launchpads the creator role collects a share of every swap fee: on Ascend's mainnet launchpad (v5) a fee the creator picks from 1% to 10%, and on Volta, Montra, ElysPump, Boxa and Kleos the creator's cut of the coin's tax, paid in HYPE. Without Monarchy that money sits in one wallet, holders earn nothing for holding, and promises about rewards or vesting can't be checked on chain. Monarchy replaces those promises with contracts:
 
@@ -33,6 +47,21 @@ On these launchpads the creator role collects a share of every swap fee: on Asce
 - **Vest in the open.** Sandfall streams team, contributor and treasury tokens out linearly, after a cliff or in daily, weekly or monthly steps, in any token or native HYPE. Every stream shows on chain whether its creator can cancel it, so "the team tokens are vested" becomes something anyone can check.
 - **Fees to the lockers.** A Lodestar takes the coin's creator role and pays the creator's fees to the coin's Exile lockers (50% by default), with any share the creator picks bought back and burned or streamed to the team through Sandfall. Every later change waits 12 hours in public.
 - **Proof in the Garden.** Every lock, vesting stream and router is listed live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden), with nothing stored or reported by Monarchy.
+
+## Supported launchpads
+
+Monarchy works with coins on six launchpads on Elysium mainnet. What differs per launchpad lives in a small adapter, so a new one can be added without redeploying the core contracts.
+
+| Launchpad | Creator fees paid in | Holder dividends passed on to lockers | How a coin joins |
+|---|---|---|---|
+| [Ascend](https://ascendlaunch.xyz) (v5) | The quote asset: WHYPE, USDC or KNTQ | None (v5 coins pay no holder dividends) | Launch through Monarchy, or switch a Vanilla coin with a 48 hour hand-off |
+| [Volta](https://volta.family) | HYPE | None (Volta leaves contracts out) | The creator sends the coin's creator NFT to its Lodestar |
+| [Montra](https://montramarkets.xyz) | HYPE | None | The creator points the pool's fee recipient at its Lodestar |
+| [ElysPump](https://elysp.com) | HYPE | Yes | The creator sets its Lodestar as the fee receiver |
+| [Boxa](https://boxa.club) | HYPE | Yes, except on its newest launcher, whose coins join only without a holder share | The creator proposes its Lodestar, which accepts the role |
+| [Kleos](https://thekleos.xyz) | HYPE | Yes on hooks A and B; coins on its multi-quote hooks join only without a holder share | The creator transfers the creator role to its Lodestar |
+
+Which coins on each launchpad qualify (for example, only coins paired with HYPE on most of them) is listed in [docs/launchpads.md](docs/launchpads.md#what-each-launchpad-supports).
 
 ### On Ascend's mainnet launchpad (v5)
 
@@ -48,12 +77,12 @@ The MONARCHY token gets no special treatment. It launches on Ascend like any oth
 
 | | How MONARCHY uses it |
 |---|---|
-| **Exile** | Holders lock MONARCHY to earn the holder share of every fee, by tier from Peasant to Monarch. |
-| **Sandfall** | The Team Treasury share streams to the team in the open, never in one lump. |
-| **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers, and the quote side goes to holder rewards, buyback and burn and the Team Treasury. |
+| **Exile** | Holders lock MONARCHY to earn 70% of every fee, by tier from Peasant to Monarch. |
+| **Sandfall** | The 10% Team Treasury share streams to the team in the open, never in one lump. |
+| **Lodestar** | Its creator role goes to its own Lodestar, locked there forever. Token-side fees are paid to lockers, and the quote side is split 70% to holder rewards, 20% to buyback and burn and 10% to the Team Treasury. |
 | **Garden** | Monarchy's analytics page lists every lock, vesting stream and fee router, MONARCHY's included, live from the contracts at [monarchy.fi/garden](https://monarchy.fi/garden). Locks and streams sit under MONARCHY and Others, every table filters by token address or symbol, and each router shows any change still waiting out its timelock. |
 
-On testnet, Sample Token (SMPL) stands in for MONARCHY with exactly this setup.
+On testnet, Sample Token (SMPL) stands in for MONARCHY with the same setup, at Monarchy's default split of 50% to holders, 20% to buyback and burn and 30% to the treasury.
 
 ## How it works
 
@@ -99,7 +128,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design and [SECURI
 
 ## Live on Elysium testnet
 
-Sample Token (SMPL) is launched on Ascend's live testnet launchpad with MONARCHY's planned settings: a 20/50/30 split of quote fees between buyback and burn, holders and the Team Treasury, token-side fees paid to Exile lockers, and the 0.5x/1x/2x/4x tiers. Its creator role is held by a Lodestar and locked to it forever. Every feature has been exercised on chain through the real PancakeSwap Infinity pool: an EMA-guarded buyback and burn, holder rewards in both the quote and the token dripping to Exile locks at all four tiers, the Team Treasury stream, lock extension, a config change held by its 12 hour timelock, and a creator role that refuses to move except through the 7 day upgrade path. A second token, Sample Stock Token (SMPLS), is quoted in a mock stock token and burns its token-side fees instead, so both routes are live; its buyback, holder rewards and treasury run in the stock token. Contract sources are verified on the explorer.
+Sample Token (SMPL) is launched on Ascend's live testnet launchpad with Monarchy's default settings: a 20/50/30 split of quote fees between buyback and burn, holders and the Team Treasury, token-side fees paid to Exile lockers, and the 0.5x/1x/2x/4x tiers. Its creator role is held by a Lodestar and locked to it forever. Every feature has been exercised on chain through the real PancakeSwap Infinity pool: an EMA-guarded buyback and burn, holder rewards in both the quote and the token dripping to Exile locks at all four tiers, the Team Treasury stream, lock extension, a config change held by its 12 hour timelock, and a creator role that refuses to move except through the 7 day upgrade path. A second token, Sample Stock Token (SMPLS), is quoted in a mock stock token and burns its token-side fees instead, so both routes are live; its buyback, holder rewards and treasury run in the stock token. Contract sources are verified on the explorer.
 
 | Contract | Address |
 |---|---|
@@ -150,7 +179,7 @@ tools/               demo-local.sh, keeper scripts, rehearse-launchpads.sh, rehe
 Needs Node 20+ and [Foundry](https://getfoundry.sh) (`curl -L https://foundry.paradigm.xyz | bash && foundryup`).
 
 ```bash
-git clone --recursive https://github.com/monarchy-fi/monarchy && cd monarchy
+git clone --recursive https://github.com/monarchyfi/monarchy && cd monarchy
 npm install
 forge test            # or: npm test
 ```
