@@ -20,13 +20,13 @@ export const EXILE_CATCH_UP_HOURS = 720;
  * (tools/keeper-distribute.sh). A quiet day costs far less; a long pause with locks expiring every hour costs millions. */
 export const CATCH_UP_ALONE_ABOVE_GAS = 2_000_000n;
 
-/** The MONARCHY token's contract address, shown in the nav with click to copy. Unset, the nav shows "CA: soon".
+/** The MNRCHY token's contract address, shown in the nav with click to copy. Unset, the nav shows "CA: soon".
  * For now it holds the standard burn address so the copy button can be tried; swap in the token's address at launch. */
 export const MONARCHY_CA: `0x${string}` | undefined = "0x000000000000000000000000000000000000dEaD";
 
-/** The settings MONARCHY's own Lodestar will launch with: 70% of the quote-side fees to Exile lockers, 20% to buyback
+/** The settings MNRCHY's own Lodestar will launch with: 70% of the quote-side fees to Exile lockers, 20% to buyback
  * and burn and 10% to the Team Treasury (other coins start from the form's 50/20/30 and pick their own). While a sample
- * token stands in for MONARCHY, the Kingdom page shows these rather than the sample token's own. */
+ * token stands in for MNRCHY, the Kingdom page shows these rather than the sample token's own. */
 export const MONARCHY_SETTINGS = {
   burnBps: 2000,
   holdersBps: 7000,
@@ -40,5 +40,5 @@ export const MONARCHY_SETTINGS = {
   ],
 };
 
-/** Whether a token is MONARCHY itself rather than a sample token standing in for it. */
+/** Whether a token is MNRCHY itself rather than a sample token standing in for it. */
 export const isMonarchy = (token?: string) => !!token && !!MONARCHY_CA && token.toLowerCase() === MONARCHY_CA.toLowerCase();
